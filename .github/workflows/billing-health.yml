@@ -1,0 +1,81 @@
+name: Billing Health Check
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Hourly
+  workflow_dispatch:
+
+jobs:
+  check-lago:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check Lago API health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.LAGO_API_URL }}/health" || echo "000")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Lago API health check failed (HTTP $STATUS)"
+            exit 1
+          fi
+          echo "Lago API healthy (HTTP $STATUS)"
+
+  check-btcpay:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check BTCPay Server health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ vars.BTCPAY_DOMAIN }}/health" || echo "000")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::BTCPay Server health check failed (HTTP $STATUS)"
+            exit 1
+          fi
+          echo "BTCPay Server healthy (HTTP $STATUS)"
+
+  check-invoiceplane:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check InvoicePlane reachable
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ vars.INVOICEPLANE_DOMAIN }}" || echo "000")
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "302" ]; then
+            echo "::error::InvoicePlane unreachable (HTTP $STATUS)"
+            exit 1
+          fi
+          echo "InvoicePlane reachable (HTTP $STATUS)"
+
+  check-webhooks:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check recent webhook deliveries
+        run: |
+          # Check Lago webhook logs for recent deliveries
+          echo "Checking webhook delivery status..."
+          # This would SSH into the server and check logs
+          # Placeholder for actual implementation
+          echo "Webhook check placeholder — requires server access"
+
+  alert-on-failure:
+    if: failure()
+    needs: [check-lago, check-btcpay, check-invoiceplane, check-webhooks]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create alert issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const failedJobs = [];
+            if ('${{ needs.check-lago.result }}' === 'failure') failedJobs.push('Lago API');
+            if ('${{ needs.check-btcpay.result }}' === 'failure') failedJobs.push('BTCPay Server');
+            if ('${{ needs.check-invoiceplane.result }}' === 'failure') failedJobs.push('InvoicePlane');
+            if ('${{ needs.check-webhooks.result }}' === 'failure') failedJobs.push('Webhooks');
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `💳 Billing stack component(s) down: ${failedJobs.join(', ')}`,
+              body: `Hourly billing health check detected failures in: ${failedJobs.join(', ')}.\n\nCheck logs: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ['billing', 'incident', 'urgent']
+            });

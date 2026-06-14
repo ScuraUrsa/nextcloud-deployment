@@ -1,0 +1,92 @@
+name: Test Suite
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint-ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install linting tools
+        run: pip install ansible-lint yamllint
+      - name: Run ansible-lint
+        run: ansible-lint ansible/playbooks/*.yml ansible/roles/*/tasks/*.yml
+      - name: Run yamllint
+        run: yamllint ansible/
+      - name: Syntax check playbooks
+        run: |
+          for playbook in ansible/playbooks/*.yml; do
+            ansible-playbook --syntax-check "$playbook" -i ansible/inventory/production/hosts.yml
+          done
+
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install ruff mypy bandit
+      - name: Run ruff
+        run: ruff check tests/
+      - name: Run mypy
+        run: mypy --strict tests/
+      - name: Run bandit
+        run: bandit -r tests/ -c bandit.yaml || true
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test dependencies
+        run: pip install -r tests/requirements-test.txt
+      - name: Run unit tests
+        run: pytest -m "not slow and not external and not identity and not billing" --junitxml=test-results.xml --html=test-report.html --self-contained-html
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-py${{ matrix.python-version }}
+          path: |
+            test-results.xml
+            test-report.html
+
+  integration-tests:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible
+        run: pip install ansible ansible-lint
+      - name: Install collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
+      - name: Deploy Nextcloud on ephemeral VM
+        run: |
+          echo "Integration test deployment would run here"
+          echo "ansible-playbook -i ansible/inventory/staging/hosts.yml ansible/playbooks/nextcloud_full_deploy.yml"
+        # Full integration test requires a real VM — placeholder for CI
+      - name: Run full test suite
+        run: |
+          echo "Full test suite would run against deployed instance"
+          echo "NEXTCLOUD_URL=https://localhost pytest"

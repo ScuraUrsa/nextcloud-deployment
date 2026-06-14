@@ -1,0 +1,42 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Ansible
+        run: pip install ansible ansible-lint
+      - name: Install collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
+      - name: Decrypt Ansible Vault
+        run: |
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /tmp/vault-pass
+          ansible-vault decrypt --vault-password-file /tmp/vault-pass ansible/inventory/staging/group_vars/all.yml 2>/dev/null || true
+        continue-on-error: true
+      - name: Deploy to staging
+        run: |
+          ansible-playbook -i ansible/inventory/staging/hosts.yml \
+            ansible/playbooks/nextcloud_full_deploy.yml \
+            --vault-password-file /tmp/vault-pass
+      - name: Run smoke tests
+        run: |
+          pip install -r tests/requirements-test.txt
+          NEXTCLOUD_URL="${{ vars.STAGING_URL }}" \
+          NEXTCLOUD_ADMIN_USER="${{ secrets.NEXTCLOUD_ADMIN_USER }}" \
+          NEXTCLOUD_ADMIN_PASS="${{ secrets.NEXTCLOUD_ADMIN_PASS }}" \
+          pytest -m smoke --junitxml=staging-smoke.xml
+      - name: Post deployment status
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"

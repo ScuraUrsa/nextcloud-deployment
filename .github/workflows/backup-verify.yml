@@ -1,0 +1,54 @@
+name: Backup Verification
+
+on:
+  schedule:
+    - cron: '0 1 * * 0'  # Sunday 01:00 UTC = 03:00 CEST
+  workflow_dispatch:
+
+jobs:
+  verify-backups:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH client and Borg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-client borgbackup
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ vars.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+      - name: Check Borg repository integrity
+        run: |
+          export BORG_PASSPHRASE="${{ secrets.BORG_PASSPHRASE }}"
+          borg check --verify-data ssh://borg@${{ vars.PRODUCTION_HOST }}/./nextcloud
+      - name: Verify recoverability (dry-run extract)
+        run: |
+          export BORG_PASSPHRASE="${{ secrets.BORG_PASSPHRASE }}"
+          LATEST=$(borg list --last 1 --format "{archive}" ssh://borg@${{ vars.PRODUCTION_HOST }}/./nextcloud)
+          borg extract --dry-run ssh://borg@${{ vars.PRODUCTION_HOST }}/./nextcloud::$LATEST data/nextcloud/admin/files/welcome.txt
+      - name: Verify PostgreSQL dump in backup
+        run: |
+          export BORG_PASSPHRASE="${{ secrets.BORG_PASSPHRASE }}"
+          LATEST=$(borg list --last 1 --format "{archive}" ssh://borg@${{ vars.PRODUCTION_HOST }}/./nextcloud)
+          borg extract --stdout ssh://borg@${{ vars.PRODUCTION_HOST }}/./nextcloud::$LATEST tmp/nextcloud_pre_backup.sql | head -1
+      - name: Verify Keycloak realm export
+        run: |
+          export BORG_PASSPHRASE="${{ secrets.BORG_PASSPHRASE }}"
+          LATEST=$(borg list --last 1 --format "{archive}" ssh://borg@${{ vars.PRODUCTION_HOST }}/./nextcloud)
+          borg extract --stdout ssh://borg@${{ vars.PRODUCTION_HOST }}/./nextcloud::$LATEST tmp/keycloak-realm-export.json | jq -r '.id'
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ Backup verification failed',
+              body: `Weekly backup verification failed.\n\nCheck logs: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ['backup', 'incident']
+            });

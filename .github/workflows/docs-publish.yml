@@ -1,0 +1,45 @@
+name: Docs Publish
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'NEXTCLOUD_DEPLOYMENT_REPORT.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  publish-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pandoc
+        run: sudo apt-get install -y pandoc
+      - name: Convert report to HTML
+        run: |
+          pandoc NEXTCLOUD_DEPLOYMENT_REPORT.md \
+            --from markdown --to html5 \
+            --standalone --toc --toc-depth=3 \
+            --metadata title="Nextcloud Self-Hosted Deployment Report" \
+            -o _site/index.html
+          mkdir -p _site/docs
+          for f in docs/*.md; do
+            name=$(basename "$f" .md)
+            pandoc "$f" --from markdown --to html5 --standalone -o "_site/docs/$name.html"
+          done
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
