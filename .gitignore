@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.eggs/
+venv/
+.venv/
+env/
+.env
+*.whl
+
+# Ansible
+*.retry
+ansible/vault-password.txt
+ansible/.vault_pass
+ansible/roles/*/files/downloads/
+ansible/roles/*/files/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Secrets & credentials
+*.pem
+*.key
+*.crt
+*.cert
+*.pfx
+*.p12
+credentials.yml
+secrets.yml
+vault.yml
+ansible/vault/
+**/vault_*.yml
+
+# Backup & data
+*.bak
+*.backup
+*.dump
+*.sql.gz
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.junit.xml
+test-results/
+
+# Docker
+docker-compose.override.yml
+
+# Terraform (if added later)
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Node (if added later)
+node_modules/
+package-lock.json
+
+# Misc
+*.tmp
+*.temp

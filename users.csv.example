@@ -1,0 +1,15 @@
+username,email,displayname,tier,quota_gb,password_reset
+jan.kowalski,jan.kowalski@example.com,Jan Kowalski,basic,10,true
+anna.nowak,anna.nowak@example.com,Anna Nowak,pro,50,true
+piotr.wisniewski,piotr.wisniewski@example.com,Piotr Wiśniewski,enterprise,250,true
+katarzyna.zielinska,katarzyna.zielinska@example.com,Katarzyna Zielińska,basic,10,true
+tomasz.lewandowski,tomasz.lewandowski@example.com,Tomasz Lewandowski,pro,50,true
+malgorzata.kaminska,malgorzata.kaminska@example.com,Małgorzata Kamińska,enterprise,250,true
+andrzej.dabrowski,andrzej.dabrowski@example.com,Andrzej Dąbrowski,basic,10,true
+agnieszka.wojcik,agnieszka.wojcik@example.com,Agnieszka Wójcik,pro,50,true
+michal.kowalczyk,michal.kowalczyk@example.com,Michał Kowalczyk,basic,10,true
+ewa.mazur,ewa.mazur@example.com,Ewa Mazur,pro,50,true
+# Add up to 50 users following this format
+# tier must be one of: basic, pro, enterprise
+# quota_gb: storage quota in gigabytes
+# password_reset: true = force password reset on first login
