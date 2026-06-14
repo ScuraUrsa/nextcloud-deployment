@@ -1,0 +1,105 @@
+---
+# Default variables for the Billing role
+# Deploy Lago (subscription management), BTCPay Server (crypto payments),
+# InvoicePlane (PDF invoices), and webhook dispatcher for automated user provisioning
+
+# ---------------------------------------------------------------------------
+# Feature toggles
+# ---------------------------------------------------------------------------
+billing_enabled: true
+btcpay_enabled: true
+invoiceplane_enabled: true
+
+# ---------------------------------------------------------------------------
+# Domains
+# ---------------------------------------------------------------------------
+billing_domain: "billing.example.com"
+btcpay_domain: "pay.example.com"
+invoiceplane_domain: "invoice.example.com"
+
+# ---------------------------------------------------------------------------
+# Lago — subscription management (Docker)
+# ---------------------------------------------------------------------------
+lago_version: "latest"
+lago_api_url: "https://billing.example.com/api"
+lago_webhook_secret: "{{ vault_lago_webhook_secret }}"
+lago_image_api: "getlago/api:{{ lago_version }}"
+lago_image_front: "getlago/front:{{ lago_version }}"
+lago_container_api: lago_api
+lago_container_front: lago_front
+lago_port_api: 3000
+lago_port_front: 8080
+lago_db_name: lago
+lago_db_user: lago
+lago_db_pass: "{{ vault_lago_db_pass }}"
+lago_redis_url: "redis://redis:{{ vault_redis_pass | default('changeme') }}@redis:6379/0"
+
+# ---------------------------------------------------------------------------
+# Lago plans — subscription tiers (amounts in cents, PLN, monthly)
+# ---------------------------------------------------------------------------
+lago_plans:
+  - name: "nc-basic"
+    code: "nc-basic"
+    description: "Nextcloud Basic — 50 GB storage, 5 users"
+    amount_cents: 2000
+    amount_currency: "PLN"
+    interval: "monthly"
+    pay_in_advance: true
+  - name: "nc-pro"
+    code: "nc-pro"
+    description: "Nextcloud Pro — 200 GB storage, 25 users, Talk HD"
+    amount_cents: 5000
+    amount_currency: "PLN"
+    interval: "monthly"
+    pay_in_advance: true
+  - name: "nc-enterprise"
+    code: "nc-enterprise"
+    description: "Nextcloud Enterprise — 1 TB storage, unlimited users, full suite"
+    amount_cents: 12000
+    amount_currency: "PLN"
+    interval: "monthly"
+    pay_in_advance: true
+
+# ---------------------------------------------------------------------------
+# BTCPay Server — crypto payment gateway (Docker)
+# ---------------------------------------------------------------------------
+btcpay_store_id: "{{ vault_btcpay_store_id }}"
+btcpay_api_key: "{{ vault_btcpay_api_key }}"
+btcpay_image: "btcpayserver/btcpayserver:latest"
+btcpay_container_name: btcpay_server
+btcpay_port: 49392
+btcpay_nbxplorer_image: "nicolasdorier/nbxplorer:latest"
+btcpay_nbxplorer_container: nbxplorer
+btcpay_nbxplorer_port: 32838
+btcpay_postgres_image: "postgres:15-alpine"
+btcpay_postgres_container: btcpay_postgres
+btcpay_postgres_db: btcpay
+btcpay_postgres_user: btcpay
+btcpay_postgres_pass: "{{ vault_btcpay_postgres_pass }}"
+btcpay_network: btcpay_net
+btcpay_data_dir: "/opt/btcpay"
+
+# ---------------------------------------------------------------------------
+# InvoicePlane — PDF invoice generation (LAMP stack)
+# ---------------------------------------------------------------------------
+invoiceplane_version: "1.6.2"
+invoiceplane_download_url: "https://github.com/InvoicePlane/InvoicePlane/releases/download/v{{ invoiceplane_version }}/invoiceplane-{{ invoiceplane_version }}.zip"
+invoiceplane_install_dir: "/var/www/invoiceplane"
+invoiceplane_db_name: invoiceplane
+invoiceplane_db_user: invoiceplane
+invoiceplane_db_pass: "{{ vault_invoiceplane_db_pass }}"
+invoiceplane_admin_email: "admin@example.com"
+invoiceplane_timezone: "Europe/Warsaw"
+
+# ---------------------------------------------------------------------------
+# Webhook dispatcher — Python Flask service
+# ---------------------------------------------------------------------------
+webhook_dispatcher_port: 5000
+webhook_dispatcher_secret: "{{ lago_webhook_secret }}"
+webhook_dispatcher_ansible_playbook: "/home/ubuntu/nextcloud-deployment/ansible/provision-user.yml"
+webhook_dispatcher_log_dir: "/var/log/webhook-dispatcher"
+
+# ---------------------------------------------------------------------------
+# Docker package (Ubuntu 24.04)
+# ---------------------------------------------------------------------------
+billing_docker_package: docker.io

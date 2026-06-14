@@ -1,0 +1,18 @@
+---
+# ============================================
+# Monitoring Server Group Variables
+# ============================================
+
+prometheus_scrape_interval: 15s
+prometheus_port: 9090
+grafana_port: 3000
+node_exporter_port: 9100
+postgres_exporter_port: 9187
+redis_exporter_port: 9121
+nextcloud_exporter_port: 9205
+
+monitoring_alerts_disk_warning: 80
+monitoring_alerts_disk_critical: 90
+monitoring_alerts_failed_logins: 10
+monitoring_alerts_cert_expiry_days: 30
+monitoring_alerts_backup_age_hours: 26

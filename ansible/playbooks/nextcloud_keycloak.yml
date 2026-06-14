@@ -1,0 +1,7 @@
+---
+# Keycloak SSO deployment only
+- name: Deploy Keycloak identity provider
+  hosts: all
+  become: true
+  roles:
+    - keycloak

@@ -1,0 +1,23 @@
+---
+# Full Nextcloud deployment — all-in-one
+- name: Deploy complete Nextcloud stack
+  hosts: all
+  gather_facts: true
+  become: true
+  vars:
+    nextcloud_full_deploy: true
+  roles:
+    - common
+    - php_fpm
+    - nginx
+    - postgresql
+    - redis
+    - elasticsearch
+    - nextcloud
+    - collabora
+    - talk
+    - keycloak
+    - billing
+    - hardening
+    - backup
+    - monitoring

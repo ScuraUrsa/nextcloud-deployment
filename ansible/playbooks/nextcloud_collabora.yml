@@ -1,0 +1,7 @@
+---
+# Collabora CODE server only
+- name: Deploy Collabora Online CODE server
+  hosts: all
+  become: true
+  roles:
+    - collabora

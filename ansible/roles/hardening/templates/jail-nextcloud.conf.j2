@@ -1,0 +1,12 @@
+# Fail2ban filter for Nextcloud JSON log parsing
+# Detects failed login attempts from Nextcloud's JSON-formatted logs
+# Matches entries like: {"message":"Login failed: ...","remoteAddr":"1.2.3.4",...}
+
+[Definition]
+
+failregex = ^\s*\{.*"message"\s*:\s*"Login failed:.*".*"remoteAddr"\s*:\s*"<HOST>".*\}
+            ^\s*\{.*"app"\s*:\s*"core".*"message"\s*:\s*"Login failed:.*".*"remoteAddr"\s*:\s*"<HOST>".*\}
+            ^\s*\{.*"message"\s*:\s*"Bruteforce attempt detected.*".*"remoteAddr"\s*:\s*"<HOST>".*\}
+            ^\s*\{.*"message"\s*:\s*"Trusted domain error.*".*"remoteAddr"\s*:\s*"<HOST>".*\}
+
+ignoreregex =

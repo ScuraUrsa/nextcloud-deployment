@@ -1,0 +1,82 @@
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL for BTCPay Server
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: "{{ btcpay_postgres_image }}"
+    container_name: "{{ btcpay_postgres_container }}"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "{{ btcpay_postgres_db }}"
+      POSTGRES_USER: "{{ btcpay_postgres_user }}"
+      POSTGRES_PASSWORD: "{{ btcpay_postgres_pass }}"
+    volumes:
+      - "{{ btcpay_data_dir }}/postgres:/var/lib/postgresql/data"
+    networks:
+      - btcpay_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ btcpay_postgres_user }} -d {{ btcpay_postgres_db }}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # NBXplorer — blockchain indexer for BTCPay
+  # ---------------------------------------------------------------------------
+  nbxplorer:
+    image: "{{ btcpay_nbxplorer_image }}"
+    container_name: "{{ btcpay_nbxplorer_container }}"
+    restart: unless-stopped
+    environment:
+      NBXPLORER_NETWORK: "{{ btcpay_nbxplorer_network | default('mainnet') }}"
+      NBXPLORER_BTCRPCURL: "{{ btcpay_btc_rpc_url | default('') }}"
+      NBXPLORER_BTCNODEENDPOINT: "{{ btcpay_btc_node_endpoint | default('') }}"
+      NBXPLORER_CHAINS: "btc"
+      NBXPLORER_POSTGRES: "User ID={{ btcpay_postgres_user }};Host=postgres;Port=5432;Database={{ btcpay_postgres_db }};Password={{ btcpay_postgres_pass }}"
+      NBXPLORER_NOMIGRATE: "false"
+    volumes:
+      - "{{ btcpay_data_dir }}/nbxplorer:/root/.nbxplorer"
+    networks:
+      - btcpay_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # BTCPay Server — crypto payment gateway
+  # ---------------------------------------------------------------------------
+  btcpay:
+    image: "{{ btcpay_image }}"
+    container_name: "{{ btcpay_container_name }}"
+    restart: unless-stopped
+    ports:
+      - "{{ btcpay_port }}:49392"
+    environment:
+      BTCPAY_NETWORK: "{{ btcpay_nbxplorer_network | default('mainnet') }}"
+      BTCPAY_POSTGRES: "User ID={{ btcpay_postgres_user }};Host=postgres;Port=5432;Database={{ btcpay_postgres_db }};Password={{ btcpay_postgres_pass }}"
+      BTCPAY_NBXPLORERURL: "http://nbxplorer:32838"
+      BTCPAY_EXPLORERURL: "http://nbxplorer:32838"
+      BTCPAY_BTCEXPLORERURL: "http://nbxplorer:32838"
+      BTCPAY_ROOTPATH: "/"
+      BTCPAY_DEBUGLOG: "btcpay.log"
+      BTCPAY_SSHCONNECTION: "false"
+      BTCPAY_UPDATEURL: ""
+      BTCPAY_DOCKERDEPLOYMENT: "true"
+      BTCPAY_LTCEXPLORERURL: ""
+      BTCPAY_CHAINS: "btc"
+    volumes:
+      - "{{ btcpay_data_dir }}/btcpay:/root/.btcpayserver"
+      - "{{ btcpay_data_dir }}/plugins:/root/.btcpayserver/Plugins"
+    networks:
+      - btcpay_net
+    depends_on:
+      nbxplorer:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+networks:
+  btcpay_net:
+    driver: bridge

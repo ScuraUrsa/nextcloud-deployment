@@ -1,0 +1,520 @@
+---
+# tasks/main.yml — Billing role
+# Deploy Lago (subscription management), BTCPay Server (crypto payments),
+# InvoicePlane (PDF invoices), and webhook dispatcher for automated user provisioning
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# ===================================================================
+# 1. Install Docker (shared prerequisite for Lago + BTCPay)
+# ===================================================================
+- name: Install Docker package
+  ansible.builtin.apt:
+    name: "{{ billing_docker_package }}"
+    state: present
+    update_cache: true
+  register: _billing_docker_install
+  changed_when: "_billing_docker_install.changed"
+  failed_when:
+    - _billing_docker_install is failed
+    - not _billing_docker_install.msg is search("unmet dependencies|held broken packages")
+  tags: [billing, docker, packages]
+
+- name: Ensure Docker service is enabled and running
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+  register: _billing_docker_service
+  changed_when: "_billing_docker_service.changed"
+  failed_when:
+    - _billing_docker_service is failed
+    - "'Could not find the requested service' in _billing_docker_service.msg | default('')"
+  tags: [billing, docker, service]
+
+- name: Install pip for docker-compose and Python dependencies
+  ansible.builtin.apt:
+    name:
+      - python3-pip
+      - python3-venv
+    state: present
+    update_cache: true
+  register: _billing_pip_install
+  changed_when: "_billing_pip_install.changed"
+  tags: [billing, packages]
+
+- name: Install docker-compose Python package
+  ansible.builtin.pip:
+    name:
+      - docker
+      - docker-compose
+    state: present
+  register: _billing_pip_docker
+  changed_when: "_billing_pip_docker.changed"
+  tags: [billing, docker, packages]
+
+# ===================================================================
+# 2. Deploy Lago — subscription management (Docker Compose)
+# ===================================================================
+- name: Create Lago deployment directory
+  ansible.builtin.file:
+    path: /opt/lago
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  changed_when: false
+  tags: [billing, lago]
+
+- name: Deploy Lago docker-compose.yml
+  ansible.builtin.template:
+    src: lago-docker-compose.yml.j2
+    dest: /opt/lago/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+  register: _lago_compose
+  changed_when: "_lago_compose.changed"
+  tags: [billing, lago, config]
+
+- name: Pull Lago Docker images
+  community.docker.docker_compose_v2:
+    project_src: /opt/lago
+    state: present
+    pull: always
+  register: _lago_pull
+  changed_when: "_lago_pull.changed"
+  tags: [billing, lago, docker]
+
+- name: Start Lago services (API + Frontend + Postgres + Redis)
+  community.docker.docker_compose_v2:
+    project_src: /opt/lago
+    state: present
+  register: _lago_up
+  changed_when: "_lago_up.changed"
+  tags: [billing, lago, docker]
+
+- name: Wait for Lago API health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ lago_port_api }}/health"
+    method: GET
+    return_content: false
+    status_code: 200
+  register: _lago_health
+  until: _lago_health.status == 200
+  retries: 30
+  delay: 5
+  changed_when: false
+  failed_when:
+    - _lago_health is failed
+    - _lago_health.status != 200
+  tags: [billing, lago, validate]
+
+# ===================================================================
+# 3. Create Lago plans via API (Basic / Pro / Enterprise)
+# ===================================================================
+- name: Create Lago plans via API
+  ansible.builtin.uri:
+    url: "http://localhost:{{ lago_port_api }}/api/v1/plans"
+    method: POST
+    body_format: json
+    body:
+      plan:
+        name: "{{ item.name }}"
+        code: "{{ item.code }}"
+        description: "{{ item.description }}"
+        amount_cents: "{{ item.amount_cents }}"
+        amount_currency: "{{ item.amount_currency }}"
+        interval: "{{ item.interval }}"
+        pay_in_advance: "{{ item.pay_in_advance }}"
+    headers:
+      Authorization: "Bearer {{ lago_webhook_secret }}"
+      Content-Type: "application/json"
+    status_code: [200, 201, 422]
+  loop: "{{ lago_plans }}"
+  register: _lago_plans_result
+  changed_when: "_lago_plans_result.status in [200, 201]"
+  failed_when:
+    - _lago_plans_result.status not in [200, 201, 422]
+  tags: [billing, lago, plans]
+
+# ===================================================================
+# 4. Deploy BTCPay Server — crypto payment gateway (Docker Compose)
+# ===================================================================
+- name: Create BTCPay data directory
+  ansible.builtin.file:
+    path: "{{ btcpay_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  changed_when: false
+  tags: [billing, btcpay]
+
+- name: Create BTCPay deployment directory
+  ansible.builtin.file:
+    path: /opt/btcpay
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  changed_when: false
+  tags: [billing, btcpay]
+
+- name: Deploy BTCPay docker-compose.yml
+  ansible.builtin.template:
+    src: btcpay-docker-compose.yml.j2
+    dest: /opt/btcpay/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+  register: _btcpay_compose
+  changed_when: "_btcpay_compose.changed"
+  tags: [billing, btcpay, config]
+
+- name: Pull BTCPay Docker images
+  community.docker.docker_compose_v2:
+    project_src: /opt/btcpay
+    state: present
+    pull: always
+  register: _btcpay_pull
+  changed_when: "_btcpay_pull.changed"
+  tags: [billing, btcpay, docker]
+
+- name: Start BTCPay services (Server + NBXplorer + Postgres)
+  community.docker.docker_compose_v2:
+    project_src: /opt/btcpay
+    state: present
+  register: _btcpay_up
+  changed_when: "_btcpay_up.changed"
+  tags: [billing, btcpay, docker]
+
+- name: Wait for BTCPay Server health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ btcpay_port }}/health"
+    method: GET
+    return_content: false
+    status_code: 200
+  register: _btcpay_health
+  until: _btcpay_health.status == 200
+  retries: 30
+  delay: 5
+  changed_when: false
+  failed_when:
+    - _btcpay_health is failed
+    - _btcpay_health.status != 200
+  tags: [billing, btcpay, validate]
+
+# ===================================================================
+# 5. Configure BTCPay store and webhook to Lago
+# ===================================================================
+- name: Configure BTCPay webhook to Lago
+  ansible.builtin.uri:
+    url: "http://localhost:{{ btcpay_port }}/api/v1/stores/{{ btcpay_store_id }}/webhooks"
+    method: POST
+    body_format: json
+    body:
+      url: "{{ lago_api_url }}/webhooks/btcpay"
+      secret: "{{ lago_webhook_secret }}"
+      enabled: true
+      automaticRedelivery: true
+      events:
+        - InvoiceReceivedPayment
+        - InvoicePaymentSettled
+        - InvoiceProcessing
+    headers:
+      Authorization: "token {{ btcpay_api_key }}"
+      Content-Type: "application/json"
+    status_code: [200, 201, 409]
+  register: _btcpay_webhook
+  changed_when: "_btcpay_webhook.status in [200, 201]"
+  failed_when:
+    - _btcpay_webhook.status not in [200, 201, 409]
+  tags: [billing, btcpay, webhook]
+
+# ===================================================================
+# 6. Deploy InvoicePlane — PDF invoice generation (LAMP stack)
+# ===================================================================
+- name: Install InvoicePlane LAMP dependencies
+  ansible.builtin.apt:
+    name:
+      - apache2
+      - libapache2-mod-php
+      - php
+      - php-mysql
+      - php-gd
+      - php-mbstring
+      - php-xml
+      - php-curl
+      - php-zip
+      - php-intl
+      - php-bcmath
+      - unzip
+    state: present
+    update_cache: true
+  register: _ip_deps
+  changed_when: "_ip_deps.changed"
+  tags: [billing, invoiceplane, packages]
+
+- name: Create InvoicePlane MySQL database
+  community.mysql.mysql_db:
+    name: "{{ invoiceplane_db_name }}"
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  register: _ip_db
+  changed_when: "_ip_db.changed"
+  tags: [billing, invoiceplane, database]
+
+- name: Create InvoicePlane MySQL user
+  community.mysql.mysql_user:
+    name: "{{ invoiceplane_db_user }}"
+    password: "{{ invoiceplane_db_pass }}"
+    priv: "{{ invoiceplane_db_name }}.*:ALL"
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  register: _ip_user
+  changed_when: "_ip_user.changed"
+  tags: [billing, invoiceplane, database]
+
+- name: Download InvoicePlane release
+  ansible.builtin.get_url:
+    url: "{{ invoiceplane_download_url }}"
+    dest: /tmp/invoiceplane.zip
+    mode: "0644"
+  register: _ip_download
+  changed_when: "_ip_download.changed"
+  tags: [billing, invoiceplane, install]
+
+- name: Extract InvoicePlane to web root
+  ansible.builtin.unarchive:
+    src: /tmp/invoiceplane.zip
+    dest: "{{ invoiceplane_install_dir }}"
+    remote_src: true
+    creates: "{{ invoiceplane_install_dir }}/index.php"
+    owner: www-data
+    group: www-data
+  register: _ip_extract
+  changed_when: "_ip_extract.changed"
+  tags: [billing, invoiceplane, install]
+
+- name: Set InvoicePlane directory permissions
+  ansible.builtin.file:
+    path: "{{ invoiceplane_install_dir }}"
+    owner: www-data
+    group: www-data
+    mode: "0755"
+    recurse: true
+  changed_when: false
+  tags: [billing, invoiceplane, install]
+
+- name: Configure InvoicePlane database connection
+  ansible.builtin.copy:
+    dest: "{{ invoiceplane_install_dir }}/application/config/database.php"
+    content: |
+      <?php
+      defined('BASEPATH') OR exit('No direct script access allowed');
+      $db['default'] = array(
+          'dsn'   => '',
+          'hostname' => 'localhost',
+          'username' => '{{ invoiceplane_db_user }}',
+          'password' => '{{ invoiceplane_db_pass }}',
+          'database' => '{{ invoiceplane_db_name }}',
+          'dbdriver' => 'mysqli',
+          'dbprefix' => 'ip_',
+          'pconnect' => FALSE,
+          'db_debug' => TRUE,
+          'cache_on' => FALSE,
+          'cachedir' => '',
+          'char_set' => 'utf8',
+          'dbcollat' => 'utf8_general_ci',
+          'swap_pre' => '',
+          'encrypt'  => FALSE,
+          'compress' => FALSE,
+          'stricton' => FALSE,
+          'failover' => array(),
+          'save_queries' => TRUE
+      );
+    owner: www-data
+    group: www-data
+    mode: "0640"
+  register: _ip_config
+  changed_when: "_ip_config.changed"
+  tags: [billing, invoiceplane, config]
+
+- name: Configure InvoicePlane Apache virtual host
+  ansible.builtin.copy:
+    dest: /etc/apache2/sites-available/invoiceplane.conf
+    content: |
+      <VirtualHost *:80>
+          ServerName {{ invoiceplane_domain }}
+          DocumentRoot {{ invoiceplane_install_dir }}
+
+          <Directory {{ invoiceplane_install_dir }}>
+              Options -Indexes +FollowSymLinks
+              AllowOverride All
+              Require all granted
+          </Directory>
+
+          ErrorLog ${APACHE_LOG_DIR}/invoiceplane_error.log
+          CustomLog ${APACHE_LOG_DIR}/invoiceplane_access.log combined
+      </VirtualHost>
+    owner: root
+    group: root
+    mode: "0644"
+  register: _ip_vhost
+  changed_when: "_ip_vhost.changed"
+  tags: [billing, invoiceplane, config]
+
+- name: Enable InvoicePlane Apache site
+  ansible.builtin.command:
+    cmd: a2ensite invoiceplane
+    creates: /etc/apache2/sites-enabled/invoiceplane.conf
+  register: _ip_enable
+  changed_when: "_ip_enable.rc == 0 and 'already enabled' not in _ip_enable.stdout"
+  tags: [billing, invoiceplane, config]
+
+- name: Enable Apache rewrite module
+  ansible.builtin.command:
+    cmd: a2enmod rewrite
+    creates: /etc/apache2/mods-enabled/rewrite.load
+  register: _ip_rewrite
+  changed_when: "_ip_rewrite.rc == 0 and 'already enabled' not in _ip_rewrite.stdout"
+  tags: [billing, invoiceplane, config]
+
+- name: Reload Apache to apply InvoicePlane config
+  ansible.builtin.systemd:
+    name: apache2
+    state: reloaded
+  changed_when: false
+  tags: [billing, invoiceplane, service]
+
+- name: Wait for InvoicePlane to be reachable
+  ansible.builtin.uri:
+    url: "http://localhost{{ '' if invoiceplane_domain == 'localhost' else '' }}/index.php/setup"
+    method: GET
+    return_content: false
+    status_code: 200
+  register: _ip_reachable
+  until: _ip_reachable.status == 200
+  retries: 10
+  delay: 3
+  changed_when: false
+  failed_when:
+    - _ip_reachable is failed
+    - _ip_reachable.status != 200
+  tags: [billing, invoiceplane, validate]
+
+# ===================================================================
+# 7. Deploy webhook dispatcher — Python Flask service
+# ===================================================================
+- name: Create webhook dispatcher log directory
+  ansible.builtin.file:
+    path: "{{ webhook_dispatcher_log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  changed_when: false
+  tags: [billing, webhook]
+
+- name: Install Flask and Python dependencies for webhook dispatcher
+  ansible.builtin.pip:
+    name:
+      - flask
+      - gunicorn
+    state: present
+  register: _wh_pip
+  changed_when: "_wh_pip.changed"
+  tags: [billing, webhook, packages]
+
+- name: Deploy webhook dispatcher script
+  ansible.builtin.template:
+    src: webhook-dispatcher.py.j2
+    dest: /usr/local/bin/webhook-dispatcher.py
+    owner: root
+    group: root
+    mode: "0755"
+  register: _wh_script
+  changed_when: "_wh_script.changed"
+  tags: [billing, webhook, config]
+
+- name: Deploy webhook dispatcher systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/webhook-dispatcher.service
+    content: |
+      [Unit]
+      Description=Webhook Dispatcher — Lago → Ansible provisioning bridge
+      After=network.target docker.service
+
+      [Service]
+      Type=simple
+      User=root
+      ExecStart=/usr/local/bin/gunicorn \
+          --bind 127.0.0.1:{{ webhook_dispatcher_port }} \
+          --workers 2 \
+          --timeout 120 \
+          --access-logfile {{ webhook_dispatcher_log_dir }}/access.log \
+          --error-logfile {{ webhook_dispatcher_log_dir }}/error.log \
+          webhook-dispatcher:app
+      Restart=always
+      RestartSec=5
+      StandardOutput=append:{{ webhook_dispatcher_log_dir }}/stdout.log
+      StandardError=append:{{ webhook_dispatcher_log_dir }}/stderr.log
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: "0644"
+  register: _wh_service
+  changed_when: "_wh_service.changed"
+  tags: [billing, webhook, systemd]
+
+- name: Reload systemd daemon for webhook dispatcher
+  ansible.builtin.systemd:
+    daemon_reload: true
+  changed_when: false
+  tags: [billing, webhook, systemd]
+
+- name: Enable and start webhook dispatcher service
+  ansible.builtin.systemd:
+    name: webhook-dispatcher
+    enabled: true
+    state: started
+  register: _wh_svc
+  changed_when: "_wh_svc.changed"
+  failed_when:
+    - _wh_svc is failed
+    - "'Could not find the requested service' in _wh_svc.msg | default('')"
+  tags: [billing, webhook, service]
+
+- name: Wait for webhook dispatcher health endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ webhook_dispatcher_port }}/health"
+    method: GET
+    return_content: false
+    status_code: 200
+  register: _wh_health
+  until: _wh_health.status == 200
+  retries: 15
+  delay: 2
+  changed_when: false
+  failed_when:
+    - _wh_health is failed
+    - _wh_health.status != 200
+  tags: [billing, webhook, validate]
+
+# ===================================================================
+# 8. Summary — print deployed services
+# ===================================================================
+- name: Print billing deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "=== Billing Deployment Summary ==="
+      - "Lago API:         http://localhost:{{ lago_port_api }}"
+      - "Lago Frontend:    http://localhost:{{ lago_port_front }}"
+      - "BTCPay Server:    http://localhost:{{ btcpay_port }}"
+      - "InvoicePlane:     http://localhost (Apache)"
+      - "Webhook Dispatcher: http://127.0.0.1:{{ webhook_dispatcher_port }}/health"
+      - "Lago Plans:       {{ lago_plans | map(attribute='code') | join(', ') }}"
+  changed_when: false
+  tags: [billing, summary]

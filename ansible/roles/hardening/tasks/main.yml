@@ -1,0 +1,169 @@
+---
+# Role: hardening
+# Security hardening: fail2ban, auditd, AIDE
+# All tasks are idempotent
+
+# ============================================================
+# fail2ban
+# ============================================================
+
+- name: Install fail2ban
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+    update_cache: true
+  when: fail2ban_enabled | bool
+  tags: [fail2ban, install]
+
+- name: Deploy Nextcloud fail2ban filter (JSON log parsing)
+  ansible.builtin.template:
+    src: jail-nextcloud.conf.j2
+    dest: /etc/fail2ban/filter.d/nextcloud.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: fail2ban_enabled | bool
+  tags: [fail2ban, config]
+  notify: restart fail2ban
+
+- name: Deploy Nginx auth fail2ban filter
+  ansible.builtin.template:
+    src: jail-nginx-auth.conf.j2
+    dest: /etc/fail2ban/filter.d/nginx-auth.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: fail2ban_enabled | bool
+  tags: [fail2ban, config]
+  notify: restart fail2ban
+
+- name: Deploy Keycloak fail2ban filter
+  ansible.builtin.template:
+    src: jail-keycloak.conf.j2
+    dest: /etc/fail2ban/filter.d/keycloak.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: fail2ban_enabled | bool
+  tags: [fail2ban, config]
+  notify: restart fail2ban
+
+- name: Deploy fail2ban jail.local with all jails
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  when: fail2ban_enabled | bool
+  tags: [fail2ban, config]
+  notify: restart fail2ban
+
+- name: Enable and start fail2ban service
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+  when: fail2ban_enabled | bool
+  tags: [fail2ban, service]
+
+# ============================================================
+# auditd
+# ============================================================
+
+- name: Install auditd
+  ansible.builtin.apt:
+    name: auditd
+    state: present
+    update_cache: true
+  when: auditd_enabled | bool
+  tags: [auditd, install]
+
+- name: Deploy auditd rules for Nextcloud and sensitive files
+  ansible.builtin.template:
+    src: auditd-nextcloud.rules.j2
+    dest: /etc/audit/rules.d/nextcloud.rules
+    owner: root
+    group: root
+    mode: "0640"
+  when: auditd_enabled | bool
+  tags: [auditd, config]
+  notify: restart auditd
+
+- name: Enable and start auditd service
+  ansible.builtin.systemd:
+    name: auditd
+    enabled: true
+    state: started
+  when: auditd_enabled | bool
+  tags: [auditd, service]
+
+# ============================================================
+# AIDE
+# ============================================================
+
+- name: Install AIDE
+  ansible.builtin.apt:
+    name: aide
+    state: present
+    update_cache: true
+  when: aide_enabled | bool
+  tags: [aide, install]
+
+- name: Deploy AIDE configuration
+  ansible.builtin.template:
+    src: aide.conf.j2
+    dest: /etc/aide/aide.conf
+    owner: root
+    group: root
+    mode: "0640"
+  when: aide_enabled | bool
+  tags: [aide, config]
+
+- name: Initialize AIDE database (idempotent — only if missing)
+  ansible.builtin.command:
+    cmd: aideinit -b /var/lib/aide/aide.db.new
+    creates: /var/lib/aide/aide.db
+  when: aide_enabled | bool
+  tags: [aide, init]
+  register: aide_init
+
+- name: Move newly generated AIDE database into place
+  ansible.builtin.command:
+    cmd: mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+    removes: /var/lib/aide/aide.db.new
+  when:
+    - aide_enabled | bool
+    - aide_init is changed
+  tags: [aide, init]
+
+- name: Create daily AIDE integrity check cron job
+  ansible.builtin.cron:
+    name: "AIDE daily integrity check"
+    cron_file: aide-check
+    user: root
+    job: >
+      /usr/bin/aide --check
+      | /usr/bin/mail -s "AIDE Daily Integrity Report for $(/usr/bin/hostname -f)"
+      root
+    hour: "4"
+    minute: "0"
+    state: present
+  when: aide_enabled | bool
+  tags: [aide, cron]
+
+# ============================================================
+# Handlers
+# ============================================================
+
+- name: restart fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: restarted
+  listen: restart fail2ban
+
+- name: restart auditd
+  ansible.builtin.systemd:
+    name: auditd
+    state: restarted
+  listen: restart auditd

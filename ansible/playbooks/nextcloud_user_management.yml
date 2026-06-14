@@ -1,0 +1,8 @@
+---
+# Bulk user provisioning/deprovisioning/tier changes
+# Run: ansible-playbook -i inventory/production/hosts.yml playbooks/nextcloud_user_management.yml -e user_manifest_file=users.csv
+- name: Manage Nextcloud users
+  hosts: all
+  become: true
+  roles:
+    - user_management

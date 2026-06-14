@@ -1,0 +1,15 @@
+---
+# tasks/main.yml — User Management role
+# Imports sub-task files: provision, deprovision, tier_change
+
+- name: Include provision tasks (bulk user creation from CSV)
+  ansible.builtin.include_tasks: provision.yml
+  tags: [user_management, provision]
+
+- name: Include deprovision tasks (disable and archive users)
+  ansible.builtin.include_tasks: deprovision.yml
+  tags: [user_management, deprovision]
+
+- name: Include tier change tasks (move users between tiers)
+  ansible.builtin.include_tasks: tier_change.yml
+  tags: [user_management, tier_change]

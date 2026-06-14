@@ -1,0 +1,93 @@
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Lago API — core subscription management engine
+  # ---------------------------------------------------------------------------
+  api:
+    image: "{{ lago_image_api }}"
+    container_name: "{{ lago_container_api }}"
+    restart: unless-stopped
+    ports:
+      - "{{ lago_port_api }}:3000"
+    environment:
+      DATABASE_URL: "postgresql://{{ lago_db_user }}:{{ lago_db_pass }}@postgres:5432/{{ lago_db_name }}"
+      REDIS_URL: "{{ lago_redis_url }}"
+      SECRET_KEY_BASE: "{{ lago_webhook_secret }}"
+      LAGO_FRONT_URL: "https://{{ billing_domain }}"
+      LAGO_API_URL: "{{ lago_api_url }}"
+      RAILS_ENV: production
+      RAILS_LOG_TO_STDOUT: "true"
+      RAILS_SERVE_STATIC_FILES: "enabled"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - lago_storage:/app/storage
+    networks:
+      - lago_net
+
+  # ---------------------------------------------------------------------------
+  # Lago Frontend — React-based admin UI
+  # ---------------------------------------------------------------------------
+  front:
+    image: "{{ lago_image_front }}"
+    container_name: "{{ lago_container_front }}"
+    restart: unless-stopped
+    ports:
+      - "{{ lago_port_front }}:80"
+    environment:
+      LAGO_API_URL: "{{ lago_api_url }}"
+    depends_on:
+      - api
+    networks:
+      - lago_net
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL for Lago
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: lago_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "{{ lago_db_name }}"
+      POSTGRES_USER: "{{ lago_db_user }}"
+      POSTGRES_PASSWORD: "{{ lago_db_pass }}"
+    volumes:
+      - lago_pgdata:/var/lib/postgresql/data
+    networks:
+      - lago_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ lago_db_user }} -d {{ lago_db_name }}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Redis for Lago (sidekiq jobs, caching)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: lago_redis
+    restart: unless-stopped
+    volumes:
+      - lago_redisdata:/data
+    networks:
+      - lago_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  lago_storage:
+  lago_pgdata:
+  lago_redisdata:
+
+networks:
+  lago_net:
+    driver: bridge

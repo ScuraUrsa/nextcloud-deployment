@@ -1,0 +1,13 @@
+---
+# Nextcloud version upgrade
+# Run: ansible-playbook -i inventory/production/hosts.yml playbooks/nextcloud_upgrade.yml -e nextcloud_new_version=30.0.3
+- name: Upgrade Nextcloud to new version
+  hosts: nextcloud_servers
+  become: true
+  vars:
+    nextcloud_new_version: "{{ nextcloud_version }}"
+  tasks:
+    - name: Run Nextcloud upgrade procedure
+      ansible.builtin.include_role:
+        name: nextcloud
+        tasks_from: upgrade

@@ -1,0 +1,97 @@
+---
+# ============================================
+# Global Variables — All Hosts
+# ============================================
+
+# Core Nextcloud
+nextcloud_version: "30.0.2"
+nextcloud_domain: "cloud.example.com"
+nextcloud_admin_user: admin
+nextcloud_admin_pass: "{{ vault_nextcloud_admin_pass }}"
+nextcloud_data_dir: "/data/nextcloud"
+nextcloud_web_root: "/var/www/nextcloud"
+
+# Database
+postgresql_version: 16
+postgresql_db: nextcloud
+postgresql_user: nextcloud
+postgresql_password: "{{ vault_postgresql_password }}"
+
+# Redis
+redis_socket: "/var/run/redis/redis-server.sock"
+redis_maxmemory: "512mb"
+
+# PHP
+php_version: "8.3"
+php_memory_limit: "512M"
+php_opcache_memory: 256
+
+# TLS
+tls_email: "admin@example.com"
+tls_staging: false
+
+# Keycloak SSO
+keycloak_enabled: true
+keycloak_domain: "auth.example.com"
+keycloak_admin_user: admin
+keycloak_admin_pass: "{{ vault_keycloak_admin_pass }}"
+keycloak_realm: nextcloud
+keycloak_db_name: keycloak
+keycloak_db_user: keycloak
+keycloak_db_pass: "{{ vault_keycloak_db_pass }}"
+keycloak_saml_client_id: nextcloud-saml
+keycloak_oidc_client_id: nextcloud-oidc
+
+# Nextcloud SAML/SSO
+nextcloud_saml_enabled: true
+nextcloud_saml_idp_entity_id: "https://auth.example.com/realms/nextcloud"
+nextcloud_saml_idp_sso_url: "https://auth.example.com/realms/nextcloud/protocol/saml"
+nextcloud_saml_idp_slo_url: "https://auth.example.com/realms/nextcloud/protocol/saml"
+nextcloud_saml_allow_multiple_backends: true
+nextcloud_saml_auto_provision: true
+
+# Billing
+billing_enabled: true
+billing_domain: "billing.example.com"
+lago_webhook_secret: "{{ vault_lago_webhook_secret }}"
+btcpay_enabled: true
+btcpay_domain: "pay.example.com"
+btcpay_store_id: "{{ vault_btcpay_store_id }}"
+btcpay_api_key: "{{ vault_btcpay_api_key }}"
+invoiceplane_enabled: true
+invoiceplane_domain: "invoice.example.com"
+
+# Collabora
+collabora_domain: "office.example.com"
+collabora_admin_user: admin
+collabora_admin_pass: "{{ vault_collabora_admin_pass }}"
+
+# Talk / TURN
+turn_server: "turn.example.com"
+turn_secret: "{{ vault_turn_secret }}"
+
+# Backup
+backup_retention_daily: 7
+backup_retention_weekly: 4
+backup_retention_monthly: 6
+backup_retention_yearly: 2
+backup_target: "/backup/nextcloud"
+backup_offsite: "ssh://borg@backup.example.com/./nextcloud"
+backup_encryption_passphrase: "{{ vault_borg_passphrase }}"
+backup_keycloak_realm: true
+
+# Monitoring
+grafana_admin_pass: "{{ vault_grafana_admin_pass }}"
+prometheus_retention: "30d"
+
+# Hardening
+fail2ban_enabled: true
+automatic_updates: true
+auditd_enabled: true
+aide_enabled: true
+
+# User Management
+user_manifest_file: "users.csv"
+user_default_password: "{{ vault_user_default_password }}"
+user_welcome_email: true
+user_welcome_sender: "noreply@example.com"

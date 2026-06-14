@@ -1,0 +1,7 @@
+---
+# BorgBackup + borgmatic setup only
+- name: Deploy backup infrastructure
+  hosts: all
+  become: true
+  roles:
+    - backup

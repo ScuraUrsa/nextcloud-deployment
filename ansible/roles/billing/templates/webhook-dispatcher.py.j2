@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""
+Webhook Dispatcher — Flask service that receives Lago subscription events
+and triggers Ansible provisioning for Nextcloud users.
+
+Endpoints:
+  POST /webhook/lago  — Lago subscription.created / subscription.updated events
+  GET  /health        — Health check
+
+Flow:
+  1. Lago fires a webhook when a subscription is created/updated.
+  2. This service validates the HMAC signature using lago_webhook_secret.
+  3. On valid subscription.created, it runs:
+       ansible-playbook provision-user.yml -e "user_email=... plan=..."
+  4. On subscription.canceled, it runs a deprovision playbook.
+  5. All actions are logged to /var/log/webhook-dispatcher/.
+"""
+
+import os
+import sys
+import json
+import hmac
+import hashlib
+import logging
+import subprocess
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+
+from flask import Flask, request, jsonify
+
+# ---------------------------------------------------------------------------
+# Configuration (templated by Ansible)
+# ---------------------------------------------------------------------------
+WEBHOOK_SECRET = "{{ webhook_dispatcher_secret }}"
+ANSIBLE_PLAYBOOK = "{{ webhook_dispatcher_ansible_playbook }}"
+LOG_DIR = Path("{{ webhook_dispatcher_log_dir }}")
+PORT = {{ webhook_dispatcher_port }}
+
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+logger = logging.getLogger("webhook-dispatcher")
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler(LOG_DIR / "dispatcher.log")
+file_handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(message)s"
+))
+logger.addHandler(file_handler)
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(message)s"
+))
+logger.addHandler(console_handler)
+
+# ---------------------------------------------------------------------------
+# Flask app
+# ---------------------------------------------------------------------------
+app = Flask(__name__)
+
+
+def verify_hmac(payload: bytes, signature: str) -> bool:
+    """Verify Lago webhook HMAC-SHA256 signature."""
+    if not signature:
+        return False
+    expected = hmac.new(
+        WEBHOOK_SECRET.encode("utf-8"),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+def run_ansible_async(playbook: str, extra_vars: dict) -> None:
+    """Run an Ansible playbook in a background thread."""
+    cmd = [
+        "ansible-playbook",
+        playbook,
+    ]
+    for key, value in extra_vars.items():
+        cmd.extend(["-e", f"{key}={value}"])
+
+    logger.info("Running: %s", " ".join(cmd))
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10-minute timeout for provisioning
+        )
+        if result.returncode == 0:
+            logger.info("Playbook succeeded: %s\n%s", playbook, result.stdout[-2000:])
+        else:
+            logger.error(
+                "Playbook failed (rc=%d): %s\nSTDOUT: %s\nSTDERR: %s",
+                result.returncode, playbook,
+                result.stdout[-2000:], result.stderr[-2000:]
+            )
+    except subprocess.TimeoutExpired:
+        logger.error("Playbook timed out after 600s: %s", playbook)
+    except Exception as exc:
+        logger.exception("Playbook execution error: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+@app.route("/health", methods=["GET"])
+def health():
+    """Health check endpoint."""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "webhook-dispatcher",
+    }), 200
+
+
+@app.route("/webhook/lago", methods=["POST"])
+def lago_webhook():
+    """
+    Receive Lago webhook events.
+
+    Expected headers:
+      X-Lago-Signature: HMAC-SHA256 of the raw body
+
+    Supported event types:
+      subscription.created  → provision user
+      subscription.updated  → update user plan
+      subscription.canceled → deprovision user
+    """
+    raw_body = request.get_data()
+    signature = request.headers.get("X-Lago-Signature", "")
+
+    # Verify HMAC signature
+    if not verify_hmac(raw_body, signature):
+        logger.warning("Invalid HMAC signature from %s", request.remote_addr)
+        return jsonify({"error": "Invalid signature"}), 401
+
+    try:
+        data = json.loads(raw_body)
+    except json.JSONDecodeError:
+        logger.warning("Invalid JSON payload from %s", request.remote_addr)
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    event_type = data.get("event_type", data.get("type", ""))
+    subscription = data.get("subscription", {})
+    customer = data.get("customer", {})
+
+    logger.info(
+        "Received event: type=%s subscription_id=%s customer_email=%s",
+        event_type,
+        subscription.get("lago_id", "unknown"),
+        customer.get("email", "unknown"),
+    )
+
+    # Determine action based on event type
+    if event_type in ("subscription.created", "subscription.started"):
+        plan_code = subscription.get("plan_code", "")
+        user_email = customer.get("email", "")
+
+        if not user_email:
+            logger.error("No customer email in subscription.created event")
+            return jsonify({"error": "Missing customer email"}), 400
+
+        extra_vars = {
+            "user_email": user_email,
+            "plan": plan_code,
+            "subscription_id": subscription.get("lago_id", ""),
+        }
+        threading.Thread(
+            target=run_ansible_async,
+            args=(ANSIBLE_PLAYBOOK, extra_vars),
+            daemon=True,
+        ).start()
+
+        logger.info("Queued provisioning for %s (plan=%s)", user_email, plan_code)
+        return jsonify({"status": "queued", "action": "provision", "user": user_email}), 202
+
+    elif event_type == "subscription.updated":
+        plan_code = subscription.get("plan_code", "")
+        user_email = customer.get("email", "")
+
+        if not user_email:
+            logger.error("No customer email in subscription.updated event")
+            return jsonify({"error": "Missing customer email"}), 400
+
+        extra_vars = {
+            "user_email": user_email,
+            "plan": plan_code,
+            "subscription_id": subscription.get("lago_id", ""),
+            "action": "update_plan",
+        }
+        threading.Thread(
+            target=run_ansible_async,
+            args=(ANSIBLE_PLAYBOOK, extra_vars),
+            daemon=True,
+        ).start()
+
+        logger.info("Queued plan update for %s (plan=%s)", user_email, plan_code)
+        return jsonify({"status": "queued", "action": "update_plan", "user": user_email}), 202
+
+    elif event_type in ("subscription.canceled", "subscription.terminated"):
+        user_email = customer.get("email", "")
+
+        if not user_email:
+            logger.error("No customer email in subscription.canceled event")
+            return jsonify({"error": "Missing customer email"}), 400
+
+        extra_vars = {
+            "user_email": user_email,
+            "subscription_id": subscription.get("lago_id", ""),
+            "action": "deprovision",
+        }
+        threading.Thread(
+            target=run_ansible_async,
+            args=(ANSIBLE_PLAYBOOK, extra_vars),
+            daemon=True,
+        ).start()
+
+        logger.info("Queued deprovisioning for %s", user_email)
+        return jsonify({"status": "queued", "action": "deprovision", "user": user_email}), 202
+
+    else:
+        logger.info("Unhandled event type: %s — acknowledged", event_type)
+        return jsonify({"status": "acknowledged", "event_type": event_type}), 200
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    logger.info("Starting webhook-dispatcher on port %d", PORT)
+    logger.info("Ansible playbook: %s", ANSIBLE_PLAYBOOK)
+    logger.info("Log directory: %s", LOG_DIR)
+
+    # In production, run behind a reverse proxy (nginx) with TLS.
+    # Flask's built-in server is only suitable for development/internal use.
+    app.run(
+        host="127.0.0.1",
+        port=PORT,
+        debug=False,
+    )

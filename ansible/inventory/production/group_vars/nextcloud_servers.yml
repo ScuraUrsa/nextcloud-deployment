@@ -1,0 +1,110 @@
+---
+# ============================================
+# Nextcloud Server Group Variables
+# ============================================
+
+# Tiered Feature Configuration
+nextcloud_tiers:
+  basic:
+    quota: "10 GB"
+    apps:
+      - files
+      - activity
+      - notifications
+      - calendar
+      - contacts
+      - twofactor_totp
+      - brute_force_protection
+      - ransomware_protection
+    groups: ["nc-basic"]
+  pro:
+    quota: "50 GB"
+    apps:
+      - calendar
+      - contacts
+      - mail
+      - talk
+      - deck
+      - notes
+      - forms
+      - polls
+      - twofactor_webauthn
+      - circles
+      - passwords
+      - suspicious_login
+    groups: ["nc-pro"]
+  enterprise:
+    quota: "250 GB"
+    apps:
+      - richdocuments
+      - richdocumentscode
+      - onlyoffice
+      - photos
+      - recognize
+      - music
+      - news
+      - bookmarks
+      - maps
+      - social
+      - files_external
+      - files_accesscontrol
+      - files_retention
+      - encryption
+      - files_antivirus
+      - previewgenerator
+      - impersonate
+      - federation
+    groups: ["nc-enterprise"]
+  admin:
+    quota: "1 TB"
+    apps:
+      - serverinfo
+      - impersonate
+    groups: ["nc-admin"]
+
+nextcloud_global_apps:
+  - activity
+  - notifications
+  - brute_force_protection
+  - ransomware_protection
+  - suspicious_login
+  - files_antivirus
+
+# Nextcloud apps to install (full list)
+nextcloud_apps:
+  - calendar
+  - contacts
+  - mail
+  - talk
+  - deck
+  - notes
+  - forms
+  - polls
+  - news
+  - bookmarks
+  - photos
+  - music
+  - maps
+  - social
+  - recognize
+  - previewgenerator
+  - richdocuments
+  - richdocumentscode
+  - onlyoffice
+  - twofactor_totp
+  - twofactor_webauthn
+  - brute_force_protection
+  - suspicious_login
+  - ransomware_protection
+  - files_antivirus
+  - files_external
+  - files_accesscontrol
+  - files_retention
+  - encryption
+  - activity
+  - notifications
+  - serverinfo
+  - federation
+  - circles
+  - passwords
+  - impersonate

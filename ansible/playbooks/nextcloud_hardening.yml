@@ -1,0 +1,7 @@
+---
+# Security hardening only
+- name: Apply security hardening
+  hosts: all
+  become: true
+  roles:
+    - hardening

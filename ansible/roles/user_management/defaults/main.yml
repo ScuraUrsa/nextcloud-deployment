@@ -1,0 +1,84 @@
+---
+# Default variables for the User Management role
+# Bulk provision users from CSV into Keycloak + Nextcloud
+# with tier-based groups and quotas, deprovisioning, and tier changes
+
+# ---- CSV Manifest ----
+# Path to the CSV file containing users to provision
+user_manifest_file: "users.csv"
+
+# ---- Default Password ----
+# Default password assigned to newly provisioned users
+# Must be set via Ansible Vault
+user_default_password: "{{ vault_user_default_password }}"
+
+# ---- Welcome Email ----
+# Whether to send a welcome email to newly provisioned users
+user_welcome_email: true
+
+# Sender address for welcome emails
+user_welcome_sender: "noreply@example.com"
+
+# ---- CSV Column Mapping ----
+# Expected columns in the CSV file (in order)
+user_csv_columns:
+  - username
+  - email
+  - displayname
+  - tier
+  - quota_gb
+  - password_reset
+
+# ---- Tier-to-Group Mapping ----
+# Maps CSV tier values to Keycloak/Nextcloud group names
+user_tier_groups:
+  basic: "nc-basic"
+  pro: "nc-pro"
+  enterprise: "nc-enterprise"
+  admin: "nc-admin"
+
+# ---- Tier Default Quotas ----
+# Fallback quotas when quota_gb is not specified in CSV
+user_tier_default_quotas:
+  basic: "5 GB"
+  pro: "50 GB"
+  enterprise: "500 GB"
+  admin: "none"
+
+# ---- Keycloak Connection ----
+# Reuses keycloak role variables; override if needed
+user_keycloak_port: "{{ keycloak_port | default(8443) }}"
+user_keycloak_realm: "{{ keycloak_realm | default('nextcloud') }}"
+user_keycloak_admin_user: "{{ keycloak_admin_user | default('admin') }}"
+user_keycloak_admin_pass: "{{ keycloak_admin_pass | default(vault_keycloak_admin_pass) }}"
+
+# ---- Nextcloud Connection ----
+# Reuses nextcloud role variables; override if needed
+user_nextcloud_web_root: "{{ nextcloud_web_root | default('/var/www/nextcloud') }}"
+user_nextcloud_admin_user: "{{ nextcloud_admin_user | default('admin') }}"
+user_nextcloud_admin_pass: "{{ nextcloud_admin_pass | default(vault_nextcloud_admin_pass) }}"
+
+# ---- Deprovisioning ----
+# Retention period in days before archiving deprovisioned user data
+user_deprovision_retention_days: 30
+
+# Path to archive deprovisioned user data
+user_deprovision_archive_dir: "/data/nextcloud-archive"
+
+# CSV file listing users to deprovision (one username per line, or CSV with 'username' column)
+user_deprovision_manifest: "deprovision.csv"
+
+# ---- Tier Change ----
+# CSV file listing tier changes (columns: username, new_tier, new_quota_gb)
+user_tier_change_manifest: "tier_changes.csv"
+
+# ---- Required Actions for New Users ----
+# Keycloak required actions set on newly created users
+user_required_actions:
+  - UPDATE_PASSWORD
+  - VERIFY_EMAIL
+
+# ---- API Timeouts & Retries ----
+user_api_timeout: 30
+user_api_retries: 5
+user_api_delay: 5

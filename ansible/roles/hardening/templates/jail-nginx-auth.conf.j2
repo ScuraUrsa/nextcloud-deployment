@@ -1,0 +1,10 @@
+# Fail2ban filter for Nginx HTTP authentication failures
+# Matches 401 and 403 responses in the Nginx access log
+
+[Definition]
+
+failregex = ^<HOST> -.*"(GET|POST|HEAD|PUT|DELETE|OPTIONS|PATCH).*" (401|403) [0-9]+ .*$
+            ^<HOST> -.*"(GET|POST|HEAD|PUT|DELETE|OPTIONS|PATCH).*" 401 [0-9]+ .*$
+            ^<HOST> -.*"(GET|POST|HEAD|PUT|DELETE|OPTIONS|PATCH).*" 403 [0-9]+ .*$
+
+ignoreregex =

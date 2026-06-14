@@ -1,0 +1,7 @@
+---
+# Prometheus + Grafana monitoring setup only
+- name: Deploy monitoring stack
+  hosts: monitoring_servers
+  become: true
+  roles:
+    - monitoring

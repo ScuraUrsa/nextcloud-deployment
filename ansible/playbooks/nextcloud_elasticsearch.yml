@@ -1,0 +1,7 @@
+---
+# Elasticsearch setup only
+- name: Deploy Elasticsearch for Nextcloud full-text search
+  hosts: all
+  become: true
+  roles:
+    - elasticsearch

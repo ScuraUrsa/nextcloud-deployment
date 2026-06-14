@@ -1,0 +1,267 @@
+---
+# tasks/tier_change.yml — Tier change operations
+# Reads a CSV of tier changes, moves users between Keycloak groups,
+# updates Nextcloud quota and group membership.
+# All tasks are idempotent.
+
+# -------------------------------------------------------------------
+# 1. Read tier change manifest
+# -------------------------------------------------------------------
+- name: Read tier change manifest
+  ansible.builtin.read_csv:
+    path: "{{ user_tier_change_manifest }}"
+    fieldnames:
+      - username
+      - new_tier
+      - new_quota_gb
+    delimiter: ","
+  register: _tier_csv
+  tags: [user_management, tier_change, csv]
+
+- name: Validate tier change manifest has entries
+  ansible.builtin.assert:
+    that:
+      - _tier_csv.list | length > 0
+    fail_msg: "Tier change manifest is empty or could not be read. Check {{ user_tier_change_manifest }}."
+  tags: [user_management, tier_change, csv]
+
+# -------------------------------------------------------------------
+# 2. Obtain Keycloak admin access token
+# -------------------------------------------------------------------
+- name: Obtain Keycloak admin access token
+  ansible.builtin.uri:
+    url: "https://localhost:{{ user_keycloak_port }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: admin-cli
+      username: "{{ user_keycloak_admin_user }}"
+      password: "{{ user_keycloak_admin_pass }}"
+      grant_type: password
+    validate_certs: false
+    status_code: 200
+    timeout: "{{ user_api_timeout }}"
+  register: _kc_token
+  changed_when: false
+  no_log: true
+  tags: [user_management, tier_change, keycloak, token]
+
+# -------------------------------------------------------------------
+# 3. Fetch Keycloak group IDs
+# -------------------------------------------------------------------
+- name: Fetch all Keycloak groups in realm
+  ansible.builtin.uri:
+    url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/groups"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+    timeout: "{{ user_api_timeout }}"
+  register: _kc_groups_all
+  changed_when: false
+  tags: [user_management, tier_change, keycloak, groups]
+
+- name: Build Keycloak group ID lookup dict
+  ansible.builtin.set_fact:
+    _kc_group_ids: >-
+      {{ _kc_group_ids | default({}) | combine({item.name: item.id}) }}
+  loop: "{{ _kc_groups_all.json }}"
+  no_log: false
+  tags: [user_management, tier_change, keycloak, groups]
+
+# -------------------------------------------------------------------
+# 4. Process each tier change
+# -------------------------------------------------------------------
+- name: Process tier changes
+  block:
+    # --- 4a. Validate tier is known ---
+    - name: "Validate tier '{{ _tier_change.new_tier }}' for '{{ _tier_change.username }}'"
+      ansible.builtin.assert:
+        that:
+          - _tier_change.new_tier in user_tier_groups
+        fail_msg: "Unknown tier '{{ _tier_change.new_tier }}' for user '{{ _tier_change.username }}'. Valid tiers: {{ user_tier_groups.keys() | join(', ') }}."
+      tags: [user_management, tier_change, validate]
+
+    # --- 4b. Look up user in Keycloak ---
+    - name: "Look up user '{{ _tier_change.username }}' in Keycloak"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users?username={{ _tier_change.username }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 200
+        timeout: "{{ user_api_timeout }}"
+      register: _kc_user_lookup
+      changed_when: false
+      tags: [user_management, tier_change, keycloak, user]
+
+    - name: "Set Keycloak user ID for '{{ _tier_change.username }}'"
+      ansible.builtin.set_fact:
+        _kc_tier_user_id: "{{ _kc_user_lookup.json[0].id }}"
+      when: _kc_user_lookup.json | length > 0
+      tags: [user_management, tier_change, keycloak, user]
+
+    # --- 4c. Get current Keycloak groups for user ---
+    - name: "Get current Keycloak groups for '{{ _tier_change.username }}'"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users/{{ _kc_tier_user_id }}/groups"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 200
+        timeout: "{{ user_api_timeout }}"
+      register: _kc_current_groups
+      changed_when: false
+      when: _kc_tier_user_id is defined
+      tags: [user_management, tier_change, keycloak, groups]
+
+    # --- 4d. Remove user from old tier groups in Keycloak ---
+    # Identify which of the current groups are tier groups and remove them
+    - name: "Build list of old tier groups to remove for '{{ _tier_change.username }}'"
+      ansible.builtin.set_fact:
+        _old_tier_groups: >-
+          {{ _kc_current_groups.json
+             | selectattr('name', 'in', user_tier_groups.values() | list)
+             | map(attribute='id')
+             | list }}
+      when:
+        - _kc_tier_user_id is defined
+        - _kc_current_groups.json | length > 0
+      tags: [user_management, tier_change, keycloak, groups]
+
+    - name: "Remove '{{ _tier_change.username }}' from old Keycloak tier groups"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users/{{ _kc_tier_user_id }}/groups/{{ _old_group_id }}"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 204
+        timeout: "{{ user_api_timeout }}"
+      loop: "{{ _old_tier_groups }}"
+      loop_control:
+        loop_var: _old_group_id
+        label: "group_id={{ _old_group_id }}"
+      when:
+        - _kc_tier_user_id is defined
+        - _old_tier_groups is defined
+        - _old_tier_groups | length > 0
+      register: _kc_group_remove
+      changed_when: true
+      tags: [user_management, tier_change, keycloak, groups]
+
+    # --- 4e. Add user to new tier group in Keycloak ---
+    - name: "Add '{{ _tier_change.username }}' to new Keycloak tier group '{{ user_tier_groups[_tier_change.new_tier] }}'"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users/{{ _kc_tier_user_id }}/groups/{{ _kc_group_ids[user_tier_groups[_tier_change.new_tier]] }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 204
+        timeout: "{{ user_api_timeout }}"
+      when:
+        - _kc_tier_user_id is defined
+        - _kc_group_ids[user_tier_groups[_tier_change.new_tier]] is defined
+        - _kc_current_groups.json | selectattr('id', 'equalto', _kc_group_ids[user_tier_groups[_tier_change.new_tier]]) | list | length == 0
+      register: _kc_group_add
+      changed_when: true
+      tags: [user_management, tier_change, keycloak, groups]
+
+    # --- 4f. Update Nextcloud quota ---
+    - name: "Determine new quota for '{{ _tier_change.username }}'"
+      ansible.builtin.set_fact:
+        _new_quota: >-
+          {{ _tier_change.new_quota_gb | default('') | trim + ' GB'
+             if _tier_change.new_quota_gb | default('') | trim | length > 0
+             else user_tier_default_quotas[_tier_change.new_tier] }}
+      tags: [user_management, tier_change, nextcloud, quota]
+
+    - name: "Update Nextcloud quota for '{{ _tier_change.username }}' to {{ _new_quota }}"
+      ansible.builtin.command:
+        cmd: "php occ user:setting {{ _tier_change.username }} files quota '{{ _new_quota }}'"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_quota_update
+      changed_when: "_nc_quota_update.rc == 0"
+      failed_when: false
+      tags: [user_management, tier_change, nextcloud, quota]
+
+    # --- 4g. Update Nextcloud group membership ---
+    # Remove from old tier groups, add to new tier group
+    - name: "List current Nextcloud groups for '{{ _tier_change.username }}'"
+      ansible.builtin.command:
+        cmd: "php occ user:list-groups {{ _tier_change.username }}"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_current_groups
+      changed_when: false
+      failed_when: false
+      tags: [user_management, tier_change, nextcloud, groups]
+
+    - name: "Remove '{{ _tier_change.username }}' from old Nextcloud tier groups"
+      ansible.builtin.command:
+        cmd: "php occ group:removeuser {{ _nc_old_group }} {{ _tier_change.username }}"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_group_remove
+      changed_when: "'removed' in _nc_group_remove.stdout | default('')"
+      failed_when: false
+      loop: "{{ _nc_current_groups.stdout_lines | default([]) | intersect(user_tier_groups.values() | list) }}"
+      loop_control:
+        loop_var: _nc_old_group
+        label: "{{ _nc_old_group }}"
+      when:
+        - _nc_current_groups.stdout_lines is defined
+        - _nc_current_groups.stdout_lines | length > 0
+      tags: [user_management, tier_change, nextcloud, groups]
+
+    - name: "Add '{{ _tier_change.username }}' to new Nextcloud tier group '{{ user_tier_groups[_tier_change.new_tier] }}'"
+      ansible.builtin.command:
+        cmd: "php occ group:adduser {{ user_tier_groups[_tier_change.new_tier] }} {{ _tier_change.username }}"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_group_add
+      changed_when: "'added' in _nc_group_add.stdout | default('')"
+      failed_when:
+        - _nc_group_add is failed
+        - _nc_group_add.rc | default(1) != 0
+        - "'already' not in _nc_group_add.stdout | default('')"
+      tags: [user_management, tier_change, nextcloud, groups]
+
+    # --- 4h. Log tier change ---
+    - name: "Log tier change for '{{ _tier_change.username }}'"
+      ansible.builtin.lineinfile:
+        path: "{{ user_deprovision_archive_dir }}/tier_changes.log"
+        line: "{{ ansible_date_time.iso8601 }} | TIER_CHANGE | {{ _tier_change.username }} | new_tier={{ _tier_change.new_tier }} | quota={{ _new_quota }}"
+        create: true
+        owner: "www-data"
+        group: "www-data"
+        mode: "0640"
+      tags: [user_management, tier_change, log]
+
+  loop: "{{ _tier_csv.list }}"
+  loop_control:
+    loop_var: _tier_change
+    label: "{{ _tier_change.username }} -> {{ _tier_change.new_tier }}"
+  tags: [user_management, tier_change, users]
+
+# -------------------------------------------------------------------
+# 5. Summary report
+# -------------------------------------------------------------------
+- name: Tier change summary
+  ansible.builtin.debug:
+    msg: |
+      Tier changes complete.
+      Processed {{ _tier_csv.list | length }} users from {{ user_tier_change_manifest }}.
+      Users moved between Keycloak groups.
+      Nextcloud quotas and group memberships updated.
+      Log written to {{ user_deprovision_archive_dir }}/tier_changes.log.
+  tags: [user_management, tier_change, summary]

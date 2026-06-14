@@ -1,0 +1,7 @@
+---
+# Billing stack deployment only
+- name: Deploy billing stack (Lago + BTCPay Server + InvoicePlane)
+  hosts: all
+  become: true
+  roles:
+    - billing

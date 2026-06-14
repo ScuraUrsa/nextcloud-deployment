@@ -1,0 +1,7 @@
+---
+# Redis setup only
+- name: Deploy Redis for Nextcloud
+  hosts: all
+  become: true
+  roles:
+    - redis

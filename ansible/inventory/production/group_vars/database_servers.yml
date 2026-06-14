@@ -1,0 +1,14 @@
+---
+# ============================================
+# Database Server Group Variables
+# ============================================
+
+postgresql_shared_buffers: "4GB"
+postgresql_effective_cache_size: "12GB"
+postgresql_work_mem: "32MB"
+postgresql_maintenance_work_mem: "512MB"
+postgresql_max_connections: 50
+postgresql_random_page_cost: 1.1
+postgresql_wal_level: replica
+postgresql_archive_mode: on
+postgresql_listen_addresses: localhost

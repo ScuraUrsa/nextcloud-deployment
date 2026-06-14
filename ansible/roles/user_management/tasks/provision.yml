@@ -1,0 +1,241 @@
+---
+# tasks/provision.yml — Bulk user provisioning from CSV
+# Creates users in Keycloak with tier-based group assignment,
+# sets required actions, and optionally sends welcome email.
+# Nextcloud accounts are auto-created on first SSO login.
+# All tasks are idempotent: checks existence before creating.
+
+# -------------------------------------------------------------------
+# 1. Read CSV manifest file
+# -------------------------------------------------------------------
+- name: Read user manifest CSV
+  ansible.builtin.read_csv:
+    path: "{{ user_manifest_file }}"
+    fieldnames: "{{ user_csv_columns }}"
+    delimiter: ","
+  register: _user_csv
+  tags: [user_management, provision, csv]
+
+- name: Validate CSV has users
+  ansible.builtin.assert:
+    that:
+      - _user_csv.list | length > 0
+    fail_msg: "User manifest CSV is empty or could not be read. Check {{ user_manifest_file }}."
+  tags: [user_management, provision, csv]
+
+# -------------------------------------------------------------------
+# 2. Obtain Keycloak admin access token
+# -------------------------------------------------------------------
+- name: Obtain Keycloak admin access token
+  ansible.builtin.uri:
+    url: "https://localhost:{{ user_keycloak_port }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: admin-cli
+      username: "{{ user_keycloak_admin_user }}"
+      password: "{{ user_keycloak_admin_pass }}"
+      grant_type: password
+    validate_certs: false
+    status_code: 200
+    timeout: "{{ user_api_timeout }}"
+  register: _kc_token
+  changed_when: false
+  no_log: true
+  tags: [user_management, provision, keycloak, token]
+
+# -------------------------------------------------------------------
+# 3. Look up Keycloak group IDs for tier groups
+# -------------------------------------------------------------------
+- name: Fetch all Keycloak groups in realm
+  ansible.builtin.uri:
+    url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/groups"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+    timeout: "{{ user_api_timeout }}"
+  register: _kc_groups_all
+  changed_when: false
+  tags: [user_management, provision, keycloak, groups]
+
+- name: Build Keycloak group ID lookup dict
+  ansible.builtin.set_fact:
+    _kc_group_ids: >-
+      {{ _kc_group_ids | default({}) | combine({item.name: item.id}) }}
+  loop: "{{ _kc_groups_all.json }}"
+  no_log: false
+  tags: [user_management, provision, keycloak, groups]
+
+# -------------------------------------------------------------------
+# 4. Provision each user from CSV
+# -------------------------------------------------------------------
+- name: Provision users from CSV
+  block:
+    # --- 4a. Check if user already exists in Keycloak ---
+    - name: "Check if user '{{ _user.username }}' exists in Keycloak"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users?username={{ _user.username }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 200
+        timeout: "{{ user_api_timeout }}"
+      register: _kc_user_check
+      changed_when: false
+      tags: [user_management, provision, keycloak, user]
+
+    # --- 4b. Create user in Keycloak (idempotent — only if not found) ---
+    - name: "Create user '{{ _user.username }}' in Keycloak"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          username: "{{ _user.username }}"
+          email: "{{ _user.email }}"
+          firstName: "{{ _user.displayname | default(_user.username) }}"
+          lastName: ""
+          enabled: true
+          emailVerified: false
+          credentials:
+            - type: password
+              value: "{{ user_default_password }}"
+              temporary: "{{ _user.password_reset | default('true') | lower in ['true', 'yes', '1'] }}"
+          requiredActions: "{{ user_required_actions }}"
+          groups: >-
+            {{ [_kc_group_ids[user_tier_groups[_user.tier | default('basic')]]]
+               if _kc_group_ids[user_tier_groups[_user.tier | default('basic')]] is defined
+               else [] }}
+        validate_certs: false
+        status_code: 201
+        timeout: "{{ user_api_timeout }}"
+      when: _kc_user_check.json | length == 0
+      register: _kc_user_create
+      changed_when: true
+      no_log: true
+      tags: [user_management, provision, keycloak, user]
+
+    # --- 4c. If user already exists, ensure group membership ---
+    - name: "Get existing user '{{ _user.username }}' ID from Keycloak"
+      ansible.builtin.set_fact:
+        _kc_existing_user_id: "{{ _kc_user_check.json[0].id }}"
+      when: _kc_user_check.json | length > 0
+      tags: [user_management, provision, keycloak, user]
+
+    - name: "Get current groups for existing user '{{ _user.username }}'"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users/{{ _kc_existing_user_id }}/groups"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 200
+        timeout: "{{ user_api_timeout }}"
+      register: _kc_existing_groups
+      changed_when: false
+      when:
+        - _kc_user_check.json | length > 0
+        - _kc_existing_user_id is defined
+      tags: [user_management, provision, keycloak, user]
+
+    - name: "Ensure existing user '{{ _user.username }}' is in tier group"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users/{{ _kc_existing_user_id }}/groups/{{ _kc_group_ids[user_tier_groups[_user.tier | default('basic')]] }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 204
+        timeout: "{{ user_api_timeout }}"
+      when:
+        - _kc_user_check.json | length > 0
+        - _kc_existing_user_id is defined
+        - _kc_group_ids[user_tier_groups[_user.tier | default('basic')]] is defined
+        - _kc_existing_groups.json | selectattr('id', 'equalto', _kc_group_ids[user_tier_groups[_user.tier | default('basic')]]) | list | length == 0
+      register: _kc_group_add
+      changed_when: true
+      tags: [user_management, provision, keycloak, user]
+
+    # --- 4d. Set Nextcloud quota for the user ---
+    - name: "Set Nextcloud quota for user '{{ _user.username }}'"
+      ansible.builtin.command:
+        cmd: >-
+          php occ user:setting {{ _user.username }} files quota
+          '{{ _user.quota_gb | default('') | trim + ' GB' if _user.quota_gb | default('') | trim | length > 0
+              else user_tier_default_quotas[_user.tier | default('basic')] }}'
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_quota_set
+      changed_when: "_nc_quota_set.rc == 0"
+      failed_when: false
+      tags: [user_management, provision, nextcloud, quota]
+
+    # --- 4e. Add user to Nextcloud tier group ---
+    - name: "Add user '{{ _user.username }}' to Nextcloud tier group"
+      ansible.builtin.command:
+        cmd: "php occ group:adduser {{ user_tier_groups[_user.tier | default('basic')] }} {{ _user.username }}"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_group_add
+      changed_when: "'added' in _nc_group_add.stdout | default('')"
+      failed_when:
+        - _nc_group_add is failed
+        - _nc_group_add.rc | default(1) != 0
+        - "'already' not in _nc_group_add.stdout | default('')"
+      tags: [user_management, provision, nextcloud, group]
+
+    # --- 4f. Optionally send welcome email ---
+    - name: "Send welcome email to '{{ _user.email }}'"
+      ansible.builtin.mail:
+        subject: "Welcome to Nextcloud — Your Account is Ready"
+        body: |
+          Hello {{ _user.displayname | default(_user.username) }},
+
+          Your Nextcloud account has been created.
+
+          Username: {{ _user.username }}
+          Tier: {{ _user.tier | default('basic') }}
+          Quota: {{ _user.quota_gb | default(user_tier_default_quotas[_user.tier | default('basic')]) }}
+
+          Please log in at https://{{ nextcloud_domain | default('cloud.example.com') }}
+          You will be prompted to set your password on first login.
+
+          If you have any questions, contact your administrator.
+
+          — The Nextcloud Team
+        from: "{{ user_welcome_sender }}"
+        to:
+          - "{{ _user.displayname | default(_user.username) }} <{{ _user.email }}>"
+        charset: utf8
+      when: user_welcome_email | bool
+      delegate_to: localhost
+      run_once: false
+      changed_when: true
+      tags: [user_management, provision, email]
+
+  loop: "{{ _user_csv.list }}"
+  loop_control:
+    loop_var: _user
+    label: "{{ _user.username }}"
+  tags: [user_management, provision, users]
+
+# -------------------------------------------------------------------
+# 5. Summary report
+# -------------------------------------------------------------------
+- name: Provisioning summary
+  ansible.builtin.debug:
+    msg: |
+      User provisioning complete.
+      Processed {{ _user_csv.list | length }} users from {{ user_manifest_file }}.
+      Users created in Keycloak realm '{{ user_keycloak_realm }}'.
+      Tier groups assigned: {{ user_tier_groups | dict2items | map(attribute='value') | unique | join(', ') }}.
+      Nextcloud accounts will be created on first SSO login.
+  tags: [user_management, provision, summary]

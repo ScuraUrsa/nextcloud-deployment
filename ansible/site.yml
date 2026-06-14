@@ -1,0 +1,88 @@
+---
+# ============================================
+# Master Playbook — Full Nextcloud Deployment
+# ============================================
+# Deploys the complete Nextcloud stack on a single host.
+# Run: ansible-playbook -i inventory/production/hosts.yml site.yml
+
+- name: Deploy complete Nextcloud stack
+  hosts: all
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Verify target is Ubuntu 24.04
+      ansible.builtin.fail:
+        msg: "This playbook targets Ubuntu 24.04 LTS. Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      when: ansible_distribution != 'Ubuntu' or ansible_distribution_version != '24.04'
+
+  roles:
+    # Phase 1: OS baseline
+    - role: common
+      tags: [common, os, baseline]
+
+    # Phase 2: Core infrastructure
+    - role: php_fpm
+      tags: [php, php_fpm]
+    - role: nginx
+      tags: [nginx, web, tls]
+    - role: postgresql
+      tags: [postgresql, db, database]
+    - role: redis
+      tags: [redis, cache]
+    - role: elasticsearch
+      tags: [elasticsearch, search, es]
+      when: "'enterprise' in group_names or nextcloud_full_deploy | default(true)"
+
+    # Phase 3: Nextcloud application
+    - role: nextcloud
+      tags: [nextcloud, app, core]
+
+    # Phase 4: Collaboration sidecars
+    - role: collabora
+      tags: [collabora, office, code]
+      when: "'enterprise' in group_names or nextcloud_full_deploy | default(true)"
+    - role: talk
+      tags: [talk, turn, stun]
+      when: "'pro' in group_names or 'enterprise' in group_names or nextcloud_full_deploy | default(true)"
+
+    # Phase 5: Identity
+    - role: keycloak
+      tags: [keycloak, sso, auth, identity]
+      when: keycloak_enabled | default(true)
+
+    # Phase 6: Billing
+    - role: billing
+      tags: [billing, lago, btcpay, invoice]
+      when: billing_enabled | default(false)
+
+    # Phase 7: Security hardening
+    - role: hardening
+      tags: [hardening, security, fail2ban, auditd, aide]
+
+    # Phase 8: Backup
+    - role: backup
+      tags: [backup, borg, borgmatic]
+
+    # Phase 9: Monitoring
+    - role: monitoring
+      tags: [monitoring, prometheus, grafana]
+
+  post_tasks:
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "Nextcloud deployment complete!"
+          - "Nextcloud URL: https://{{ nextcloud_domain }}"
+          - "Keycloak URL: https://{{ keycloak_domain }}"
+          - "Collabora URL: https://{{ collabora_domain }}"
+          - "Grafana URL: https://{{ nextcloud_domain }}:{{ grafana_port }}"
+          - "============================================"
+          - "Next steps:"
+          - "1. Log in to Nextcloud as admin"
+          - "2. Configure SSO in Settings → Administration → SAML"
+          - "3. Provision users: ansible-playbook playbooks/nextcloud_user_management.yml"
+          - "4. Verify backups: borgmatic list"
+          - "5. Check monitoring: https://{{ nextcloud_domain }}:{{ grafana_port }}"
+      tags: [always]

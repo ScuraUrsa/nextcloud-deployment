@@ -1,0 +1,13 @@
+# Fail2ban filter for Keycloak authentication failures
+# Matches failed login events in Keycloak server logs
+# Typical Keycloak log format includes WARN/ERROR lines for auth failures
+
+[Definition]
+
+failregex = ^\s*.*WARN\s+\[.*\]\s+.*type=LOGIN_ERROR.*realmId=.*clientId=.*userId=.*ipAddress=<HOST>.*$
+            ^\s*.*ERROR\s+\[.*\]\s+.*type=LOGIN_ERROR.*realmId=.*clientId=.*userId=.*ipAddress=<HOST>.*$
+            ^\s*.*WARN\s+\[.*\]\s+.*Login failed.*from <HOST>.*$
+            ^\s*.*ERROR.*invalid_grant.*IP:<HOST>.*$
+            ^\s*.*WARN.*Failed authentication.*remote address <HOST>.*$
+
+ignoreregex =

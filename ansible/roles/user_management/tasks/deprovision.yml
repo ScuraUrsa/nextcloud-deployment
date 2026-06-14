@@ -1,0 +1,204 @@
+---
+# tasks/deprovision.yml — User deprovisioning pipeline
+# Reads a list of users to deprovision, disables them in Keycloak
+# and Nextcloud, then archives data after a retention period.
+# All tasks are idempotent.
+
+# -------------------------------------------------------------------
+# 1. Read deprovision manifest
+# -------------------------------------------------------------------
+- name: Read deprovision manifest
+  ansible.builtin.read_csv:
+    path: "{{ user_deprovision_manifest }}"
+    fieldnames: "username"
+    delimiter: ","
+  register: _deprov_csv
+  tags: [user_management, deprovision, csv]
+
+- name: Validate deprovision manifest has entries
+  ansible.builtin.assert:
+    that:
+      - _deprov_csv.list | length > 0
+    fail_msg: "Deprovision manifest is empty or could not be read. Check {{ user_deprovision_manifest }}."
+  tags: [user_management, deprovision, csv]
+
+# -------------------------------------------------------------------
+# 2. Obtain Keycloak admin access token
+# -------------------------------------------------------------------
+- name: Obtain Keycloak admin access token
+  ansible.builtin.uri:
+    url: "https://localhost:{{ user_keycloak_port }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: admin-cli
+      username: "{{ user_keycloak_admin_user }}"
+      password: "{{ user_keycloak_admin_pass }}"
+      grant_type: password
+    validate_certs: false
+    status_code: 200
+    timeout: "{{ user_api_timeout }}"
+  register: _kc_token
+  changed_when: false
+  no_log: true
+  tags: [user_management, deprovision, keycloak, token]
+
+# -------------------------------------------------------------------
+# 3. Ensure archive directory exists
+# -------------------------------------------------------------------
+- name: Create deprovision archive directory
+  ansible.builtin.file:
+    path: "{{ user_deprovision_archive_dir }}"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    mode: "0750"
+  tags: [user_management, deprovision, archive]
+
+# -------------------------------------------------------------------
+# 4. Deprovision each user
+# -------------------------------------------------------------------
+- name: Deprovision users
+  block:
+    # --- 4a. Look up user in Keycloak ---
+    - name: "Look up user '{{ _deprov_user.username }}' in Keycloak"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users?username={{ _deprov_user.username }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+        validate_certs: false
+        status_code: 200
+        timeout: "{{ user_api_timeout }}"
+      register: _kc_user_lookup
+      changed_when: false
+      tags: [user_management, deprovision, keycloak, user]
+
+    - name: "Set Keycloak user ID for '{{ _deprov_user.username }}'"
+      ansible.builtin.set_fact:
+        _kc_deprov_user_id: "{{ _kc_user_lookup.json[0].id }}"
+      when: _kc_user_lookup.json | length > 0
+      tags: [user_management, deprovision, keycloak, user]
+
+    # --- 4b. Disable user in Keycloak ---
+    - name: "Disable user '{{ _deprov_user.username }}' in Keycloak"
+      ansible.builtin.uri:
+        url: "https://localhost:{{ user_keycloak_port }}/admin/realms/{{ user_keycloak_realm }}/users/{{ _kc_deprov_user_id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ _kc_token.json.access_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          enabled: false
+        validate_certs: false
+        status_code: 204
+        timeout: "{{ user_api_timeout }}"
+      when: _kc_deprov_user_id is defined
+      register: _kc_disable
+      changed_when: true
+      tags: [user_management, deprovision, keycloak, disable]
+
+    # --- 4c. Disable user in Nextcloud ---
+    - name: "Disable user '{{ _deprov_user.username }}' in Nextcloud"
+      ansible.builtin.command:
+        cmd: "php occ user:disable {{ _deprov_user.username }}"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_disable
+      changed_when: "'disabled' in _nc_disable.stdout | default('')"
+      failed_when:
+        - _nc_disable is failed
+        - _nc_disable.rc | default(1) != 0
+        - "'already disabled' not in _nc_disable.stdout | default('')"
+        - "'does not exist' not in _nc_disable.stderr | default('')"
+      tags: [user_management, deprovision, nextcloud, disable]
+
+    # --- 4d. Remove user from all Nextcloud groups ---
+    - name: "List Nextcloud groups for '{{ _deprov_user.username }}'"
+      ansible.builtin.command:
+        cmd: "php occ user:list-groups {{ _deprov_user.username }}"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_user_groups
+      changed_when: false
+      failed_when: false
+      tags: [user_management, deprovision, nextcloud, groups]
+
+    - name: "Remove user '{{ _deprov_user.username }}' from Nextcloud groups"
+      ansible.builtin.command:
+        cmd: "php occ group:removeuser {{ _nc_group }} {{ _deprov_user.username }}"
+        chdir: "{{ user_nextcloud_web_root }}"
+      become: true
+      become_user: "www-data"
+      register: _nc_group_remove
+      changed_when: "'removed' in _nc_group_remove.stdout | default('')"
+      failed_when: false
+      loop: "{{ _nc_user_groups.stdout_lines | default([]) }}"
+      loop_control:
+        loop_var: _nc_group
+        label: "{{ _nc_group }}"
+      when:
+        - _nc_user_groups.stdout_lines is defined
+        - _nc_user_groups.stdout_lines | length > 0
+      tags: [user_management, deprovision, nextcloud, groups]
+
+    # --- 4e. Archive user data ---
+    - name: "Check if user '{{ _deprov_user.username }}' data directory exists"
+      ansible.builtin.stat:
+        path: "{{ nextcloud_data_dir | default('/data/nextcloud') }}/{{ _deprov_user.username }}"
+      register: _nc_data_dir
+      tags: [user_management, deprovision, nextcloud, archive]
+
+    - name: "Archive user '{{ _deprov_user.username }}' data"
+      ansible.builtin.command:
+        cmd: >-
+          tar -czf {{ user_deprovision_archive_dir }}/{{ _deprov_user.username }}-{{ ansible_date_time.epoch }}.tar.gz
+          -C {{ nextcloud_data_dir | default('/data/nextcloud') }} {{ _deprov_user.username }}
+      become: true
+      register: _nc_archive
+      changed_when: true
+      when: _nc_data_dir.stat.exists | default(false)
+      tags: [user_management, deprovision, nextcloud, archive]
+
+    # --- 4f. Remove user data after archiving ---
+    - name: "Remove user '{{ _deprov_user.username }}' data directory"
+      ansible.builtin.file:
+        path: "{{ nextcloud_data_dir | default('/data/nextcloud') }}/{{ _deprov_user.username }}"
+        state: absent
+      become: true
+      when: _nc_data_dir.stat.exists | default(false)
+      tags: [user_management, deprovision, nextcloud, cleanup]
+
+    # --- 4g. Log deprovisioning event ---
+    - name: "Log deprovisioning of '{{ _deprov_user.username }}'"
+      ansible.builtin.lineinfile:
+        path: "{{ user_deprovision_archive_dir }}/deprovision.log"
+        line: "{{ ansible_date_time.iso8601 }} | DEPROVISIONED | {{ _deprov_user.username }} | archive: {{ _deprov_user.username }}-{{ ansible_date_time.epoch }}.tar.gz"
+        create: true
+        owner: "www-data"
+        group: "www-data"
+        mode: "0640"
+      tags: [user_management, deprovision, log]
+
+  loop: "{{ _deprov_csv.list }}"
+  loop_control:
+    loop_var: _deprov_user
+    label: "{{ _deprov_user.username }}"
+  tags: [user_management, deprovision, users]
+
+# -------------------------------------------------------------------
+# 5. Summary report
+# -------------------------------------------------------------------
+- name: Deprovisioning summary
+  ansible.builtin.debug:
+    msg: |
+      User deprovisioning complete.
+      Processed {{ _deprov_csv.list | length }} users from {{ user_deprovision_manifest }}.
+      Users disabled in Keycloak realm '{{ user_keycloak_realm }}'.
+      Users disabled in Nextcloud.
+      Data archived to {{ user_deprovision_archive_dir }}.
+      Retention period: {{ user_deprovision_retention_days }} days.
+  tags: [user_management, deprovision, summary]

@@ -1,0 +1,9 @@
+---
+# Nextcloud app server only (assumes DB/Redis/ES already deployed)
+- name: Deploy Nextcloud application server
+  hosts: nextcloud_servers
+  become: true
+  roles:
+    - php_fpm
+    - nginx
+    - nextcloud
