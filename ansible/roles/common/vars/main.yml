@@ -1,0 +1,46 @@
+---
+# Default variables for the common role (OS baseline)
+common_timezone: "Europe/Warsaw"
+common_admin_user: "admin"
+common_ssh_port: 22
+
+common_packages:
+  - vim
+  - curl
+  - wget
+  - git
+  - htop
+  - iotop
+  - net-tools
+  - unzip
+  - software-properties-common
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+
+# SSH hardening settings
+common_ssh_permit_root_login: "no"
+common_ssh_password_authentication: "no"
+common_ssh_client_alive_interval: 300
+common_ssh_client_alive_count_max: 2
+
+# UFW settings
+common_ufw_default_incoming: "deny"
+common_ufw_default_outgoing: "allow"
+common_ufw_allowed_ports:
+  - { port: "22", proto: "tcp" }
+  - { port: "80", proto: "tcp" }
+  - { port: "443", proto: "tcp" }
+  - { port: "3478", proto: "tcp" }
+  - { port: "3478", proto: "udp" }
+  - { port: "5349", proto: "tcp" }
+  - { port: "5349", proto: "udp" }
+  - { port: "20000:40000", proto: "udp" }
+
+# Unattended-upgrades
+common_unattended_upgrades_origins:
+  - "origin=Ubuntu,archive=${distro_codename}-security"
+  - "origin=Ubuntu,archive=${distro_codename}-updates"
+
+# Swappiness
+common_swappiness: 10

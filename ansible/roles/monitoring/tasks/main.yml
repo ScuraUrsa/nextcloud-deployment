@@ -1,0 +1,442 @@
+---
+# tasks/main.yml — Prometheus + Grafana + exporters for Nextcloud monitoring
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# ===================================================================
+# 1. Install Prometheus and node_exporter from Ubuntu repos
+# ===================================================================
+- name: Install Prometheus and node_exporter packages
+  ansible.builtin.apt:
+    name:
+      - prometheus
+      - prometheus-node-exporter
+    state: present
+    update_cache: true
+    install_recommends: false
+  register: _prom_pkg_install
+  changed_when: "_prom_pkg_install.changed"
+  failed_when:
+    - _prom_pkg_install is failed
+    - not _prom_pkg_install.msg is search("unmet dependencies|held broken packages")
+  tags: [monitoring, packages, prometheus]
+
+# ===================================================================
+# 2. Install Grafana from official APT repository
+# ===================================================================
+- name: Add Grafana APT repository key
+  ansible.builtin.apt_key:
+    url: "https://apt.grafana.com/gpg.key"
+    state: present
+  tags: [monitoring, packages, grafana]
+
+- name: Add Grafana APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.grafana.com stable main"
+    state: present
+    filename: grafana
+  tags: [monitoring, packages, grafana]
+
+- name: Install Grafana package
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+    install_recommends: false
+  register: _grafana_pkg_install
+  changed_when: "_grafana_pkg_install.changed"
+  failed_when:
+    - _grafana_pkg_install is failed
+    - not _grafana_pkg_install.msg is search("unmet dependencies|held broken packages")
+  tags: [monitoring, packages, grafana]
+
+# ===================================================================
+# 3. Install exporter binaries (postgres, redis, nextcloud)
+# ===================================================================
+- name: Create temporary download directory for exporters
+  ansible.builtin.file:
+    path: /tmp/exporters
+    state: directory
+    mode: "0755"
+  changed_when: false
+  tags: [monitoring, exporters]
+
+- name: Download and extract postgres_exporter
+  block:
+    - name: Download postgres_exporter archive
+      ansible.builtin.get_url:
+        url: "{{ postgres_exporter_url }}"
+        dest: "/tmp/exporters/postgres_exporter.tar.gz"
+        mode: "0644"
+      register: _pg_exp_dl
+      changed_when: "_pg_exp_dl.changed"
+
+    - name: Extract postgres_exporter
+      ansible.builtin.unarchive:
+        src: "/tmp/exporters/postgres_exporter.tar.gz"
+        dest: "/tmp/exporters"
+        remote_src: true
+        creates: "/tmp/exporters/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64/postgres_exporter"
+      register: _pg_exp_extract
+      changed_when: "_pg_exp_extract.changed"
+
+    - name: Install postgres_exporter binary
+      ansible.builtin.copy:
+        src: "/tmp/exporters/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64/postgres_exporter"
+        dest: "{{ exporter_install_dir }}/postgres_exporter"
+        mode: "0755"
+        remote_src: true
+      register: _pg_exp_copy
+      changed_when: "_pg_exp_copy.changed"
+  tags: [monitoring, exporters, postgres_exporter]
+
+- name: Download and extract redis_exporter
+  block:
+    - name: Download redis_exporter archive
+      ansible.builtin.get_url:
+        url: "{{ redis_exporter_url }}"
+        dest: "/tmp/exporters/redis_exporter.tar.gz"
+        mode: "0644"
+      register: _redis_exp_dl
+      changed_when: "_redis_exp_dl.changed"
+
+    - name: Extract redis_exporter
+      ansible.builtin.unarchive:
+        src: "/tmp/exporters/redis_exporter.tar.gz"
+        dest: "/tmp/exporters"
+        remote_src: true
+        creates: "/tmp/exporters/redis_exporter-v{{ redis_exporter_version }}.linux-amd64/redis_exporter"
+      register: _redis_exp_extract
+      changed_when: "_redis_exp_extract.changed"
+
+    - name: Install redis_exporter binary
+      ansible.builtin.copy:
+        src: "/tmp/exporters/redis_exporter-v{{ redis_exporter_version }}.linux-amd64/redis_exporter"
+        dest: "{{ exporter_install_dir }}/redis_exporter"
+        mode: "0755"
+        remote_src: true
+      register: _redis_exp_copy
+      changed_when: "_redis_exp_copy.changed"
+  tags: [monitoring, exporters, redis_exporter]
+
+- name: Download and extract nextcloud-exporter
+  block:
+    - name: Download nextcloud-exporter archive
+      ansible.builtin.get_url:
+        url: "{{ nextcloud_exporter_url }}"
+        dest: "/tmp/exporters/nextcloud_exporter.tar.gz"
+        mode: "0644"
+      register: _nc_exp_dl
+      changed_when: "_nc_exp_dl.changed"
+
+    - name: Extract nextcloud-exporter
+      ansible.builtin.unarchive:
+        src: "/tmp/exporters/nextcloud_exporter.tar.gz"
+        dest: "/tmp/exporters"
+        remote_src: true
+        creates: "/tmp/exporters/nextcloud-exporter-{{ nextcloud_exporter_version }}.linux-amd64/nextcloud-exporter"
+      register: _nc_exp_extract
+      changed_when: "_nc_exp_extract.changed"
+
+    - name: Install nextcloud-exporter binary
+      ansible.builtin.copy:
+        src: "/tmp/exporters/nextcloud-exporter-{{ nextcloud_exporter_version }}.linux-amd64/nextcloud-exporter"
+        dest: "{{ exporter_install_dir }}/nextcloud-exporter"
+        mode: "0755"
+        remote_src: true
+      register: _nc_exp_copy
+      changed_when: "_nc_exp_copy.changed"
+  tags: [monitoring, exporters, nextcloud_exporter]
+
+- name: Clean up temporary download directory
+  ansible.builtin.file:
+    path: /tmp/exporters
+    state: absent
+  changed_when: false
+  tags: [monitoring, exporters]
+
+# ===================================================================
+# 4. Create systemd service units for custom exporters
+# ===================================================================
+- name: Deploy postgres_exporter systemd service
+  ansible.builtin.template:
+    src: postgres_exporter.service.j2
+    dest: /etc/systemd/system/postgres_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _pg_exp_service
+  changed_when: "_pg_exp_service.changed"
+  notify: restart postgres_exporter
+  tags: [monitoring, exporters, postgres_exporter, systemd]
+
+- name: Deploy redis_exporter systemd service
+  ansible.builtin.template:
+    src: redis_exporter.service.j2
+    dest: /etc/systemd/system/redis_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _redis_exp_service
+  changed_when: "_redis_exp_service.changed"
+  notify: restart redis_exporter
+  tags: [monitoring, exporters, redis_exporter, systemd]
+
+- name: Deploy nextcloud-exporter systemd service
+  ansible.builtin.template:
+    src: nextcloud_exporter.service.j2
+    dest: /etc/systemd/system/nextcloud_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _nc_exp_service
+  changed_when: "_nc_exp_service.changed"
+  notify: restart nextcloud_exporter
+  tags: [monitoring, exporters, nextcloud_exporter, systemd]
+
+- name: Reload systemd daemon after deploying exporter units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  changed_when: false
+  tags: [monitoring, exporters, systemd]
+
+# ===================================================================
+# 5. Deploy Prometheus configuration
+# ===================================================================
+- name: Ensure Prometheus config directory exists
+  ansible.builtin.file:
+    path: "{{ prometheus_config_dir }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: "0750"
+  changed_when: false
+  tags: [monitoring, prometheus, config]
+
+- name: Deploy prometheus.yml (scrape configs for all exporters)
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: prometheus
+    group: prometheus
+    mode: "0640"
+  register: _prom_config
+  changed_when: "_prom_config.changed"
+  notify: reload prometheus
+  tags: [monitoring, prometheus, config]
+
+- name: Deploy alerting rules file
+  ansible.builtin.template:
+    src: alerts.yml.j2
+    dest: "{{ prometheus_alert_rules_file }}"
+    owner: prometheus
+    group: prometheus
+    mode: "0640"
+  register: _prom_alerts
+  changed_when: "_prom_alerts.changed"
+  notify: reload prometheus
+  tags: [monitoring, prometheus, alerts]
+
+# ===================================================================
+# 6. Enable and start all services
+# ===================================================================
+- name: Ensure Prometheus is enabled and running
+  ansible.builtin.systemd:
+    name: prometheus
+    enabled: true
+    state: started
+  register: _prom_service
+  changed_when: "_prom_service.changed"
+  failed_when:
+    - _prom_service is failed
+    - "'Could not find the requested service' in _prom_service.msg | default('')"
+  tags: [monitoring, prometheus, service]
+
+- name: Ensure prometheus-node-exporter is enabled and running
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+  register: _node_exp_service
+  changed_when: "_node_exp_service.changed"
+  failed_when:
+    - _node_exp_service is failed
+    - "'Could not find the requested service' in _node_exp_service.msg | default('')"
+  tags: [monitoring, node_exporter, service]
+
+- name: Ensure postgres_exporter is enabled and running
+  ansible.builtin.systemd:
+    name: postgres_exporter
+    enabled: true
+    state: started
+  register: _pg_exp_svc
+  changed_when: "_pg_exp_svc.changed"
+  failed_when:
+    - _pg_exp_svc is failed
+    - "'Could not find the requested service' in _pg_exp_svc.msg | default('')"
+  tags: [monitoring, postgres_exporter, service]
+
+- name: Ensure redis_exporter is enabled and running
+  ansible.builtin.systemd:
+    name: redis_exporter
+    enabled: true
+    state: started
+  register: _redis_exp_svc
+  changed_when: "_redis_exp_svc.changed"
+  failed_when:
+    - _redis_exp_svc is failed
+    - "'Could not find the requested service' in _redis_exp_svc.msg | default('')"
+  tags: [monitoring, redis_exporter, service]
+
+- name: Ensure nextcloud-exporter is enabled and running
+  ansible.builtin.systemd:
+    name: nextcloud_exporter
+    enabled: true
+    state: started
+  register: _nc_exp_svc
+  changed_when: "_nc_exp_svc.changed"
+  failed_when:
+    - _nc_exp_svc is failed
+    - "'Could not find the requested service' in _nc_exp_svc.msg | default('')"
+  tags: [monitoring, nextcloud_exporter, service]
+
+- name: Ensure Grafana is enabled and running
+  ansible.builtin.systemd:
+    name: grafana-server
+    enabled: true
+    state: started
+  register: _grafana_service
+  changed_when: "_grafana_service.changed"
+  failed_when:
+    - _grafana_service is failed
+    - "'Could not find the requested service' in _grafana_service.msg | default('')"
+  tags: [monitoring, grafana, service]
+
+# ===================================================================
+# 7. Wait for services to be ready
+# ===================================================================
+- name: Wait for Prometheus to accept connections
+  ansible.builtin.uri:
+    url: "http://localhost:{{ prometheus_port }}/-/ready"
+    status_code: 200
+  register: _prom_ready
+  until: _prom_ready.status == 200
+  retries: 15
+  delay: 2
+  changed_when: false
+  tags: [monitoring, prometheus, validate]
+
+- name: Wait for Grafana to accept connections
+  ansible.builtin.uri:
+    url: "http://localhost:{{ grafana_port }}/api/health"
+    status_code: 200
+  register: _grafana_ready
+  until: _grafana_ready.status == 200
+  retries: 15
+  delay: 2
+  changed_when: false
+  tags: [monitoring, grafana, validate]
+
+# ===================================================================
+# 8. Configure Grafana — admin password, Prometheus datasource, dashboard
+# ===================================================================
+- name: Set Grafana admin password
+  ansible.builtin.uri:
+    url: "http://localhost:{{ grafana_port }}/api/user/password"
+    method: PUT
+    user: admin
+    password: admin
+    force_basic_auth: true
+    body_format: json
+    body:
+      oldPassword: admin
+      newPassword: "{{ grafana_admin_pass }}"
+      confirmNew: "{{ grafana_admin_pass }}"
+    status_code: 200
+  register: _grafana_pw
+  changed_when: "_grafana_pw.status == 200"
+  failed_when:
+    - _grafana_pw.status != 200
+    - "'password already updated' not in _grafana_pw.json.message | default('') | lower"
+  tags: [monitoring, grafana, security]
+
+- name: Add Prometheus datasource to Grafana
+  ansible.builtin.uri:
+    url: "http://localhost:{{ grafana_port }}/api/datasources"
+    method: POST
+    user: admin
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: Prometheus
+      type: prometheus
+      url: "http://localhost:{{ prometheus_port }}"
+      access: proxy
+      isDefault: true
+    status_code: [200, 409]
+  register: _grafana_ds
+  changed_when: "_grafana_ds.status == 200"
+  failed_when:
+    - _grafana_ds.status not in [200, 409]
+  tags: [monitoring, grafana, datasource]
+
+- name: Import Nextcloud dashboard into Grafana
+  ansible.builtin.uri:
+    url: "http://localhost:{{ grafana_port }}/api/dashboards/db"
+    method: POST
+    user: admin
+    password: "{{ grafana_admin_pass }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      dashboard: "{{ lookup('template', 'nextcloud-dashboard.json.j2') | from_json }}"
+      overwrite: true
+    status_code: 200
+  register: _grafana_dashboard
+  changed_when: "_grafana_dashboard.status == 200"
+  failed_when:
+    - _grafana_dashboard.status != 200
+  tags: [monitoring, grafana, dashboard]
+
+# ===================================================================
+# 9. Verify exporters are reachable
+# ===================================================================
+- name: Verify node_exporter metrics endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ node_exporter_port }}/metrics"
+    status_code: 200
+    return_content: false
+  register: _node_exp_check
+  changed_when: false
+  failed_when: _node_exp_check.status != 200
+  tags: [monitoring, node_exporter, validate]
+
+- name: Verify postgres_exporter metrics endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ postgres_exporter_port }}/metrics"
+    status_code: 200
+    return_content: false
+  register: _pg_exp_check
+  changed_when: false
+  failed_when: _pg_exp_check.status != 200
+  tags: [monitoring, postgres_exporter, validate]
+
+- name: Verify redis_exporter metrics endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ redis_exporter_port }}/metrics"
+    status_code: 200
+    return_content: false
+  register: _redis_exp_check
+  changed_when: false
+  failed_when: _redis_exp_check.status != 200
+  tags: [monitoring, redis_exporter, validate]
+
+- name: Verify nextcloud-exporter metrics endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ nextcloud_exporter_port }}/metrics"
+    status_code: 200
+    return_content: false
+  register: _nc_exp_check
+  changed_when: false
+  failed_when: _nc_exp_check.status != 200
+  tags: [monitoring, nextcloud_exporter, validate]

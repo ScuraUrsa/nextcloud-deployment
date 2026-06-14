@@ -1,0 +1,149 @@
+# {{ ansible_managed | default('Managed by Ansible — backup role') }}
+# borgmatic configuration for Nextcloud backup
+# Generated from template: ansible/roles/backup/templates/borgmatic-config.yaml.j2
+
+# -------------------------------------------------------------------
+# Source directories to back up
+# -------------------------------------------------------------------
+source_directories:
+{% for source in backup_sources %}
+  - {{ source }}
+{% endfor %}
+
+# -------------------------------------------------------------------
+# Borg repositories (local + offsite)
+# -------------------------------------------------------------------
+repositories:
+  - path: {{ backup_target }}
+    label: local
+{% if backup_offsite is defined and backup_offsite | length > 0 %}
+  - path: {{ backup_offsite }}
+    label: offsite
+{% endif %}
+
+# -------------------------------------------------------------------
+# Exclude patterns — skip temporary and cache files
+# -------------------------------------------------------------------
+exclude_patterns:
+  - '*.tmp'
+  - '*.swp'
+  - '*.swo'
+  - '*~'
+  - '*.pyc'
+  - '__pycache__'
+  - '.cache'
+  - 'lost+found'
+  - '*.log.1'
+  - '*.log.2'
+  - '*.log.3'
+  - '*.log.4'
+  - '*.log.5'
+  - '*.log.6'
+  - '*.log.7'
+  - '*.log.8'
+  - '*.log.9'
+  - '/data/nextcloud/nextcloud.log*'
+  - '/data/nextcloud/updater-*'
+  - '/data/nextcloud/appdata_*'
+
+# Exclude caches and temporary files from Nextcloud data
+exclude_caches: true
+exclude_if_present:
+  - .nobackup
+  - .borg-ignore
+
+# -------------------------------------------------------------------
+# One filesystem per source (don't cross mount points)
+# -------------------------------------------------------------------
+one_file_system: true
+
+# -------------------------------------------------------------------
+# Read special files like FIFOs and sockets without hanging
+# -------------------------------------------------------------------
+read_special: true
+
+# -------------------------------------------------------------------
+# Compression
+# -------------------------------------------------------------------
+compression: {{ backup_compression }}
+
+# -------------------------------------------------------------------
+# Encryption passphrase (via environment variable BORG_PASSPHRASE)
+# -------------------------------------------------------------------
+encryption_passcommand: "cat /etc/borgmatic/passphrase"
+
+# -------------------------------------------------------------------
+# Retention / pruning policy
+# -------------------------------------------------------------------
+retention:
+  keep_daily: {{ backup_retention_daily }}
+  keep_weekly: {{ backup_retention_weekly }}
+  keep_monthly: {{ backup_retention_monthly }}
+  keep_yearly: {{ backup_retention_yearly }}
+  prefix: "{hostname}-"
+
+# -------------------------------------------------------------------
+# Consistency checks (run after each backup)
+# -------------------------------------------------------------------
+consistency:
+  checks:
+    - name: repository
+      frequency: 2 weeks
+    - name: archives
+      frequency: 2 weeks
+    - name: extract
+      frequency: 4 weeks
+  check_last: 3
+
+# -------------------------------------------------------------------
+# Hooks — pre-backup and post-backup actions
+# -------------------------------------------------------------------
+hooks:
+  # -----------------------------------------------------------------
+  # Pre-backup: dump PostgreSQL database
+  # -----------------------------------------------------------------
+{% if backup_pre_hook_pg_dump | bool %}
+  before_backup:
+    - pg_dump -U {{ backup_pg_dump_user }} -d {{ backup_pg_dump_db }} -F c -f {{ backup_pg_dump_dir }}/nextcloud-{now:%Y%m%d-%H%M%S}.dump
+{% endif %}
+
+  # -----------------------------------------------------------------
+  # Pre-backup: export Keycloak realm
+  # -----------------------------------------------------------------
+{% if backup_keycloak_realm | bool %}
+    - /usr/local/bin/borgmatic-keycloak-export.sh
+{% endif %}
+
+  # -----------------------------------------------------------------
+  # Pre-backup: put Nextcloud in maintenance mode
+  # -----------------------------------------------------------------
+    - |
+      if command -v occ &>/dev/null; then
+        cd /var/www/nextcloud && sudo -u www-data php occ maintenance:mode --on 2>/dev/null || true
+      fi
+
+  # -----------------------------------------------------------------
+  # Post-backup: take Nextcloud out of maintenance mode
+  # -----------------------------------------------------------------
+  after_backup:
+    - |
+      if command -v occ &>/dev/null; then
+        cd /var/www/nextcloud && sudo -u www-data php occ maintenance:mode --off 2>/dev/null || true
+      fi
+
+  # -----------------------------------------------------------------
+  # On error: ensure maintenance mode is turned off
+  # -----------------------------------------------------------------
+  on_error:
+    - |
+      if command -v occ &>/dev/null; then
+        cd /var/www/nextcloud && sudo -u www-data php occ maintenance:mode --off 2>/dev/null || true
+      fi
+
+# -------------------------------------------------------------------
+# Healthchecks integration (optional — configure via vars)
+# -------------------------------------------------------------------
+{% if backup_healthchecks_ping_url is defined and backup_healthchecks_ping_url | length > 0 %}
+healthchecks:
+  ping_url: {{ backup_healthchecks_ping_url }}
+{% endif %}

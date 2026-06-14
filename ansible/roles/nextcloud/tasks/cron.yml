@@ -1,0 +1,53 @@
+---
+# tasks/cron.yml — Create system cron job for www-data
+# Runs Nextcloud background jobs every 5 minutes
+
+# -------------------------------------------------------------------
+# 1. Create cron file for Nextcloud background jobs
+# -------------------------------------------------------------------
+- name: Create system cron job for Nextcloud background jobs
+  ansible.builtin.cron:
+    name: "Nextcloud background jobs"
+    user: "{{ nextcloud_cron_user }}"
+    job: "php -f {{ nextcloud_web_root }}/cron.php"
+    minute: "*/5"
+    cron_file: "nextcloud"
+    state: present
+  register: _nc_cron
+  changed_when: "_nc_cron.changed"
+  failed_when:
+    - _nc_cron is failed
+
+# -------------------------------------------------------------------
+# 2. Verify cron mode is set in config
+# -------------------------------------------------------------------
+- name: Verify background jobs mode is set to cron
+  ansible.builtin.command:
+    cmd: "php occ config:system:get backgroundjobs_mode"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_bg_mode
+  changed_when: false
+  failed_when: false
+
+- name: Warn if background jobs mode is not cron
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: backgroundjobs_mode is '{{ _nc_bg_mode.stdout | default('unknown') }}'.
+      Expected 'cron'. Run 'php occ background:cron' to fix.
+  when: "'cron' not in _nc_bg_mode.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 3. Ensure cron service is running
+# -------------------------------------------------------------------
+- name: Ensure cron service is active and enabled
+  ansible.builtin.systemd:
+    name: cron
+    state: started
+    enabled: true
+  register: _nc_cron_svc
+  changed_when: "_nc_cron_svc.changed"
+  failed_when:
+    - _nc_cron_svc is failed
+    - "'Could not find the requested service' in _nc_cron_svc.msg | default('')"

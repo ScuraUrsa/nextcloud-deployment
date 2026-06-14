@@ -1,0 +1,12 @@
+# {{ ansible_managed | default('Managed by Ansible — backup role') }}
+[Unit]
+Description=Daily borgmatic backup timer (03:00 CEST / 01:00 UTC)
+Requires=borgmatic.service
+
+[Timer]
+OnCalendar={{ backup_schedule_oncalendar }}
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

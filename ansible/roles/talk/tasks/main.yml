@@ -1,0 +1,92 @@
+---
+# tasks/main.yml — Coturn TURN/STUN server for Nextcloud Talk
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# -------------------------------------------------------------------
+# 1. Install coturn from Ubuntu repos
+# -------------------------------------------------------------------
+- name: Install coturn package
+  ansible.builtin.apt:
+    name: "{{ turn_package }}"
+    state: present
+    update_cache: true
+    install_recommends: false
+  register: _turn_pkg_install
+  changed_when: "_turn_pkg_install.changed"
+  failed_when:
+    - _turn_pkg_install is failed
+    - not _turn_pkg_install.msg is search("unmet dependencies|held broken packages")
+
+# -------------------------------------------------------------------
+# 2. Ensure TLS certificate and key are readable by coturn
+# -------------------------------------------------------------------
+- name: Ensure coturn can read TLS certificate files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: file
+    owner: root
+    group: turnserver
+    mode: "0640"
+  loop:
+    - "{{ turn_cert_file }}"
+    - "{{ turn_pkey_file }}"
+  changed_when: false
+  failed_when: false
+  when: turn_cert_file is defined and turn_pkey_file is defined
+
+# -------------------------------------------------------------------
+# 3. Deploy turnserver.conf from template
+# -------------------------------------------------------------------
+- name: Deploy Coturn configuration (turnserver.conf)
+  ansible.builtin.template:
+    src: turnserver.conf.j2
+    dest: /etc/turnserver.conf
+    owner: root
+    group: turnserver
+    mode: "0640"
+  register: _turn_conf
+  changed_when: "_turn_conf.changed"
+  failed_when:
+    - _turn_conf is failed
+    - _turn_conf.rc | default(0) != 0
+  notify: "restart coturn"
+
+# -------------------------------------------------------------------
+# 4. Enable and start coturn service
+# -------------------------------------------------------------------
+- name: Ensure coturn service is enabled and running
+  ansible.builtin.systemd:
+    name: "{{ turn_service }}"
+    enabled: true
+    state: started
+  register: _turn_service
+  changed_when: "_turn_service.changed"
+  failed_when:
+    - _turn_service is failed
+    - "'Could not find the requested service' in _turn_service.msg | default('')"
+
+# -------------------------------------------------------------------
+# 5. Verify TURN server responds on STUN port
+# -------------------------------------------------------------------
+- name: Verify TURN server responds on STUN port (3478)
+  ansible.builtin.wait_for:
+    host: "{{ turn_external_ip }}"
+    port: "{{ turn_port_stun }}"
+    state: started
+    delay: 2
+    timeout: 15
+  changed_when: false
+  failed_when: false
+
+# -------------------------------------------------------------------
+# 6. Verify TURN server responds on TLS port
+# -------------------------------------------------------------------
+- name: Verify TURN server responds on TLS port (5349)
+  ansible.builtin.wait_for:
+    host: "{{ turn_external_ip }}"
+    port: "{{ turn_port_tls }}"
+    state: started
+    delay: 2
+    timeout: 15
+  changed_when: false
+  failed_when: false

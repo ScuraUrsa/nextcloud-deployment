@@ -1,0 +1,37 @@
+---
+# Default variables for the Collabora CODE role
+# Deploy Collabora Online CODE server via Docker for Nextcloud integration
+
+# Collabora CODE Docker image version
+collabora_version: "latest"
+
+# Domain for Collabora (used in reverse proxy, not in container itself)
+collabora_domain: "office.example.com"
+
+# Admin credentials for Collabora admin panel
+collabora_admin_user: admin
+collabora_admin_pass: "{{ vault_collabora_admin_pass }}"
+
+# Nextcloud domain — WOPI allow list (aliasgroup1)
+# Reuses the global nextcloud_domain variable
+collabora_nextcloud_domain: "{{ nextcloud_domain }}"
+
+# Extra parameters passed to Collabora (SSL termination mode)
+# Nginx handles TLS; Collabora runs plain HTTP internally
+collabora_extra_params: "--o:ssl.enable=false --o:ssl.termination=true"
+
+# Docker image
+collabora_image: "collabora/code:{{ collabora_version }}"
+
+# Container name
+collabora_container_name: collabora_code
+
+# Port mapping (container 9980 -> host 9980)
+collabora_port: 9980
+
+# Health check settings
+collabora_health_retries: 30
+collabora_health_delay: 10
+
+# Docker package (Ubuntu 24.04)
+collabora_docker_package: docker.io

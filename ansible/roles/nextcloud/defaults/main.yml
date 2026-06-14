@@ -1,0 +1,304 @@
+---
+# Default variables for the Nextcloud Core role
+# Download, install, configure Nextcloud 30 with full feature set
+
+# ---- Version & Paths ----
+nextcloud_version: "30.0.2"
+nextcloud_domain: "cloud.example.com"
+nextcloud_web_root: "/var/www/nextcloud"
+nextcloud_data_dir: "/data/nextcloud"
+nextcloud_log_dir: "/var/log/nextcloud"
+
+# ---- Admin Credentials ----
+nextcloud_admin_user: "admin"
+nextcloud_admin_pass: "{{ vault_nextcloud_admin_pass }}"
+
+# ---- Database (PostgreSQL) ----
+nextcloud_db_type: "pgsql"
+nextcloud_db_host: "localhost:/var/run/postgresql/.s.PGSQL.5432"
+nextcloud_db_name: "{{ postgresql_db | default('nextcloud') }}"
+nextcloud_db_user: "{{ postgresql_user | default('nextcloud') }}"
+nextcloud_db_password: "{{ vault_postgresql_password }}"
+
+# ---- Redis (Unix socket) ----
+nextcloud_redis_host: "/var/run/redis/redis-server.sock"
+nextcloud_redis_port: 0
+nextcloud_redis_timeout: 0.0
+nextcloud_redis_db_index: 0
+
+# ---- Trusted Domains ----
+nextcloud_trusted_domains:
+  - "{{ nextcloud_domain }}"
+  - "localhost"
+
+# ---- Protocol & Region ----
+nextcloud_overwrite_protocol: "https"
+nextcloud_default_phone_region: "PL"
+
+# ---- Background Jobs ----
+nextcloud_background_jobs: "cron"  # cron, ajax, or webcron
+
+# ---- Maintenance Window ----
+nextcloud_maintenance_window_start: 1  # UTC hour (1 = 01:00 UTC)
+
+# ---- Logging ----
+nextcloud_log_type: "file"
+nextcloud_log_level: 2  # 0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR, 4=FATAL
+nextcloud_log_date_format: "Y-m-d H:i:s"
+nextcloud_log_timezone: "UTC"
+
+# ---- Mail / SMTP ----
+nextcloud_mail_smtp_mode: "smtp"
+nextcloud_mail_smtp_host: "localhost"
+nextcloud_mail_smtp_port: 25
+nextcloud_mail_smtp_secure: ""  # ssl, tls, or empty
+nextcloud_mail_smtp_auth: false
+nextcloud_mail_smtp_name: ""
+nextcloud_mail_smtp_password: ""
+nextcloud_mail_from_address: "noreply"
+nextcloud_mail_domain: "{{ nextcloud_domain | regex_replace('^cloud\\.', '') }}"
+
+# ---- File Retention & Versioning ----
+nextcloud_versions_retention: "auto, 30"
+nextcloud_trashbin_retention: "auto, 30"
+nextcloud_max_chunk_size: 10485760  # 10MB
+
+# ---- Federation ----
+nextcloud_federation_outgoing: true
+nextcloud_federation_incoming: true
+
+# ---- Encryption ----
+nextcloud_encryption_enabled: false  # Set true to enable SSE (incompatible with SAML/OIDC)
+
+# ---- File Locking ----
+nextcloud_filelocking_enabled: true
+
+# ---- Activity ----
+nextcloud_activity_expire_days: 90
+
+# ---- Preview Settings ----
+nextcloud_preview_max_x: 4096
+nextcloud_preview_max_y: 4096
+nextcloud_preview_max_filesize_image: 50  # MB
+nextcloud_preview_max_memory: 256  # MB
+nextcloud_enabled_preview_providers:
+  - "OC\\Preview\\PNG"
+  - "OC\\Preview\\JPEG"
+  - "OC\\Preview\\GIF"
+  - "OC\\Preview\\BMP"
+  - "OC\\Preview\\XBitmap"
+  - "OC\\Preview\\MP3"
+  - "OC\\Preview\\TXT"
+  - "OC\\Preview\\MarkDown"
+  - "OC\\Preview\\OpenDocument"
+  - "OC\\Preview\\Krita"
+  - "OC\\Preview\\WebP"
+  - "OC\\Preview\\HEIC"
+  - "OC\\Preview\\SVG"
+  - "OC\\Preview\\TIFF"
+  - "OC\\Preview\\Movie"
+  - "OC\\Preview\\MKV"
+  - "OC\\Preview\\MP4"
+  - "OC\\Preview\\AVI"
+
+# ---- Skeleton / Default Files ----
+nextcloud_skeleton_directory: ""  # empty = no skeleton
+
+# ---- App Paths ----
+nextcloud_app_paths:
+  - "{{ nextcloud_web_root }}/apps"
+  - "{{ nextcloud_web_root }}/apps-extra"
+  - "{{ nextcloud_web_root }}/custom-apps"
+
+# ---- Integrity Check ----
+nextcloud_integrity_check_disabled: false
+
+# ---- Knowledge Base ----
+nextcloud_knowledgebase_enabled: true
+
+# ---- Profile ----
+nextcloud_profile_enabled: true
+
+# ---- Default Quotas ----
+nextcloud_default_quota: "5 GB"
+nextcloud_quota_include_external_storage: false
+
+# ---- Tier Definitions ----
+# Each tier has: name, quota, apps (list of app IDs to enable for this tier)
+nextcloud_tiers:
+  basic:
+    name: "nc-basic"
+    quota: "5 GB"
+    apps:
+      # Core platform apps
+      - activity
+      - calendar
+      - contacts
+      - dashboard
+      - files
+      - files_external
+      - files_sharing
+      - files_trashbin
+      - files_versions
+      - firstrunwizard
+      - logreader
+      - nextcloud_announcements
+      - notifications
+      - password_policy
+      - photos
+      - privacy
+      - recommendations
+      - serverinfo
+      - settings
+      - sharebymail
+      - support
+      - survey_client
+      - systemtags
+      - text
+      - theming
+      - twofactor_backupcodes
+      - updatenotification
+      - viewer
+      - workflowengine
+      # Collaboration (basic)
+      - deck
+      - notes
+      - forms
+      - polls
+      - bookmarks
+      # Content & Media (basic)
+      - news
+      - music
+      - maps
+  pro:
+    name: "nc-pro"
+    quota: "50 GB"
+    apps:
+      # All basic apps inherited
+      # Pro-exclusive apps:
+      - spreed              # Nextcloud Talk
+      - mail                # Mail client
+      - circles             # Custom user groups
+      - social              # ActivityPub federation
+      - richdocuments       # Collabora Online
+      - onlyoffice          # ONLYOFFICE integration
+      - groupfolders        # Group-shared folders
+      - quota_warning       # Quota usage notifications
+      - impersonate         # Admin user impersonation
+      - registration        # User self-registration
+      - terms_of_service    # ToS enforcement
+      - fulltextsearch      # Full-text search engine
+      - files_fulltextsearch
+      - fulltextsearch_elasticsearch
+  enterprise:
+    name: "nc-enterprise"
+    quota: "500 GB"
+    apps:
+      # All basic + pro apps inherited
+      # Enterprise-exclusive apps:
+      - files_accesscontrol     # Advanced ACLs
+      - files_retention         # Retention & compliance
+      - files_antivirus         # ClamAV integration
+      - ransomware_protection   # Ransomware extension blocking
+      - ransomware_recovery     # Entropy-based ransomware recovery
+      - suspicious_login        # ML-based login anomaly detection
+      - twofactor_totp          # TOTP 2FA provider
+      - twofactor_u2f           # U2F/WebAuthn 2FA provider
+      - brute_force_settings    # Brute-force protection tuning
+      - recognize               # AI face/object recognition
+      - memories                # Advanced photo gallery
+      - files_pdfviewer         # PDF viewer
+      - extract                 # Archive extraction
+      - metadata                # Metadata editor
+
+# ---- Admin Group ----
+nextcloud_admin_group: "nc-admin"
+
+# ---- Full App List (all apps to install) ----
+# Compiled from all tiers; used by apps.yml for installation
+nextcloud_apps:
+  # Core / bundled
+  - activity
+  - calendar
+  - contacts
+  - dashboard
+  - files
+  - files_external
+  - files_sharing
+  - files_trashbin
+  - files_versions
+  - firstrunwizard
+  - logreader
+  - nextcloud_announcements
+  - notifications
+  - password_policy
+  - photos
+  - privacy
+  - recommendations
+  - serverinfo
+  - settings
+  - sharebymail
+  - support
+  - survey_client
+  - systemtags
+  - text
+  - theming
+  - twofactor_backupcodes
+  - updatenotification
+  - viewer
+  - workflowengine
+  # Collaboration
+  - deck
+  - notes
+  - forms
+  - polls
+  - bookmarks
+  - spreed
+  - mail
+  - circles
+  - social
+  - richdocuments
+  - onlyoffice
+  - groupfolders
+  - quota_warning
+  - impersonate
+  - registration
+  - terms_of_service
+  # Content & Media
+  - news
+  - music
+  - maps
+  - recognize
+  - memories
+  - files_pdfviewer
+  - extract
+  - metadata
+  # Admin & Security
+  - files_accesscontrol
+  - files_retention
+  - files_antivirus
+  - ransomware_protection
+  - ransomware_recovery
+  - suspicious_login
+  - twofactor_totp
+  - twofactor_u2f
+  - brute_force_settings
+  # Search
+  - fulltextsearch
+  - files_fulltextsearch
+  - fulltextsearch_elasticsearch
+
+# ---- Cron ----
+nextcloud_cron_user: "www-data"
+nextcloud_cron_frequency: "*/5 * * * *"  # Every 5 minutes
+
+# ---- Upgrade ----
+nextcloud_upgrade_backup_dir: "/backup/nextcloud-upgrade"
+nextcloud_upgrade_maintenance_window: 3600  # seconds
+
+# ---- Download ----
+nextcloud_download_url: "https://download.nextcloud.com/server/releases/nextcloud-{{ nextcloud_version }}.tar.bz2"
+nextcloud_download_checksum_url: "https://download.nextcloud.com/server/releases/nextcloud-{{ nextcloud_version }}.tar.bz2.sha256"
+nextcloud_download_checksum_file: "/tmp/nextcloud-{{ nextcloud_version }}.tar.bz2.sha256"
+nextcloud_download_archive: "/tmp/nextcloud-{{ nextcloud_version }}.tar.bz2"
+nextcloud_download_signature_url: "https://download.nextcloud.com/server/releases/nextcloud-{{ nextcloud_version }}.tar.bz2.asc"

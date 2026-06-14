@@ -1,0 +1,35 @@
+# {{ ansible_managed | default('Managed by Ansible — backup role') }}
+[Unit]
+Description=borgmatic backup service
+Documentation=https://torsion.org/borgmatic/
+Wants=network-online.target
+After=network-online.target
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+
+# Load secrets from restricted environment file
+EnvironmentFile=-/etc/borgmatic/environment
+
+# Run borgmatic with the deployed config
+ExecStart=/usr/bin/borgmatic --config {{ backup_borgmatic_config_file }} --verbosity 1 --syslog-verbosity 1
+
+# Security hardening
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{ backup_target }} {{ backup_pg_dump_dir }} {{ backup_keycloak_export_dir }} /var/log
+NoNewPrivileges=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=borgmatic
+
+# Rate limiting — don't restart on failure (timer handles retry)
+Restart=no

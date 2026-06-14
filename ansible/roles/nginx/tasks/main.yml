@@ -1,0 +1,105 @@
+---
+# Tasks for the Nginx reverse proxy role
+
+- name: Install nginx-full package
+  ansible.builtin.apt:
+    name: "{{ nginx_package }}"
+    state: present
+    update_cache: true
+  tags: [nginx, packages]
+
+- name: Install certbot and nginx plugin
+  ansible.builtin.apt:
+    name:
+      - certbot
+      - python3-certbot-nginx
+    state: present
+  tags: [nginx, certbot, packages]
+
+- name: Ensure nginx sites directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ nginx_sites_available }}"
+    - "{{ nginx_sites_enabled }}"
+  tags: [nginx, config]
+
+- name: Generate DH parameters (2048-bit)
+  ansible.builtin.command:
+    cmd: "openssl dhparam -out {{ nginx_ssl_dhparam }} 2048"
+    creates: "{{ nginx_ssl_dhparam }}"
+  notify: Reload nginx
+  tags: [nginx, ssl, dhparam]
+
+- name: Deploy Nextcloud Nginx site configuration
+  ansible.builtin.template:
+    src: nextcloud.conf.j2
+    dest: "{{ nginx_sites_available }}/{{ nginx_site_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+  tags: [nginx, config]
+
+- name: Enable Nextcloud site
+  ansible.builtin.file:
+    src: "{{ nginx_sites_available }}/{{ nginx_site_name }}.conf"
+    dest: "{{ nginx_sites_enabled }}/{{ nginx_site_name }}.conf"
+    state: link
+  notify: Reload nginx
+  tags: [nginx, config]
+
+- name: Disable default site
+  ansible.builtin.file:
+    path: "{{ nginx_sites_enabled }}/default"
+    state: absent
+  notify: Reload nginx
+  tags: [nginx, config]
+
+- name: Validate nginx configuration syntax
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  tags: [nginx, config, validate]
+
+- name: Obtain Let's Encrypt certificate (staging)
+  ansible.builtin.command: >-
+    certbot certonly --nginx
+    --non-interactive --agree-tos
+    --email {{ nginx_certbot_email }}
+    --domain {{ nginx_server_name }}
+    --rsa-key-size {{ nginx_certbot_rsa_key_size }}
+    --staging
+  when: nginx_certbot_staging | bool
+  register: certbot_staging_result
+  changed_when: "'Congratulations' in certbot_staging_result.stdout"
+  tags: [nginx, certbot, ssl]
+
+- name: Obtain Let's Encrypt certificate (production)
+  ansible.builtin.command: >-
+    certbot certonly --nginx
+    --non-interactive --agree-tos
+    --email {{ nginx_certbot_email }}
+    --domain {{ nginx_server_name }}
+    --rsa-key-size {{ nginx_certbot_rsa_key_size }}
+  when: not (nginx_certbot_staging | bool)
+  register: certbot_prod_result
+  changed_when: "'Congratulations' in certbot_prod_result.stdout"
+  tags: [nginx, certbot, ssl]
+
+- name: Ensure certbot renewal timer is enabled
+  ansible.builtin.systemd:
+    name: certbot.timer
+    enabled: true
+    state: started
+  tags: [nginx, certbot, renewal]
+
+- name: Enable and start nginx service
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started
+  tags: [nginx, service]

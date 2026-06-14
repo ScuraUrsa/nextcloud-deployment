@@ -1,0 +1,59 @@
+# {{ ansible_managed | default('Managed by Ansible — PostgreSQL role') }}
+# PostgreSQL Client Authentication Configuration File
+# ===================================================
+#
+# This file controls: which hosts are allowed to connect, how clients
+# are authenticated, and which PostgreSQL user names they can use.
+#
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+#
+# "local" is for Unix domain socket connections only
+# "host"  is for TCP/IP connections (SSL or non-SSL)
+#
+# Security policy: local access only, md5 password authentication.
+# Nextcloud connects from the same host via Unix socket or localhost TCP.
+
+# -----------------------------------------------------------------------------
+# Unix domain socket connections — local only
+# -----------------------------------------------------------------------------
+
+# Allow the postgres superuser to connect locally without a password
+# (needed for maintenance tasks, pg_dump, etc.)
+local   all             postgres                                peer
+
+# Allow the Nextcloud application user to connect via Unix socket
+# with md5 password authentication
+local   {{ postgresql_db }}      {{ postgresql_user }}                  md5
+
+# Allow all other local Unix socket connections with md5
+local   all             all                                     md5
+
+# -----------------------------------------------------------------------------
+# IPv4 local connections — localhost only
+# -----------------------------------------------------------------------------
+
+# Allow the Nextcloud application user to connect via TCP on localhost
+host    {{ postgresql_db }}      {{ postgresql_user }}          127.0.0.1/32            md5
+
+# Allow all other localhost TCP connections with md5
+host    all             all             127.0.0.1/32            md5
+
+# -----------------------------------------------------------------------------
+# IPv6 local connections — ::1 only
+# -----------------------------------------------------------------------------
+
+# Allow the Nextcloud application user to connect via IPv6 localhost
+host    {{ postgresql_db }}      {{ postgresql_user }}          ::1/128                 md5
+
+# Allow all other IPv6 localhost connections with md5
+host    all             all             ::1/128                 md5
+
+# -----------------------------------------------------------------------------
+# Replication connections (local only, if WAL streaming is needed)
+# -----------------------------------------------------------------------------
+
+# Allow replication connections from localhost, by a user with
+# the REPLICATION privilege
+local   replication     all                                     peer
+host    replication     all             127.0.0.1/32            md5
+host    replication     all             ::1/128                 md5

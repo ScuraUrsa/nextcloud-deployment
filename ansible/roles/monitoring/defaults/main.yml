@@ -1,0 +1,58 @@
+---
+# Default variables for the Monitoring role
+# Prometheus + Grafana + exporters for Nextcloud stack monitoring
+
+# Grafana admin credentials (from vault)
+grafana_admin_pass: "{{ vault_grafana_admin_pass }}"
+
+# Prometheus settings
+prometheus_retention: "30d"
+prometheus_scrape_interval: "15s"
+prometheus_port: 9090
+
+# Grafana settings
+grafana_port: 3000
+
+# Exporter ports
+node_exporter_port: 9100
+postgres_exporter_port: 9187
+redis_exporter_port: 9121
+nextcloud_exporter_port: 9205
+
+# Exporter binary versions
+postgres_exporter_version: "0.15.0"
+redis_exporter_version: "1.62.0"
+nextcloud_exporter_version: "0.6.2"
+
+# Exporter binary download URLs (linux-amd64)
+postgres_exporter_url: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ postgres_exporter_version }}/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64.tar.gz"
+redis_exporter_url: "https://github.com/oliver006/redis_exporter/releases/download/v{{ redis_exporter_version }}/redis_exporter-v{{ redis_exporter_version }}.linux-amd64.tar.gz"
+nextcloud_exporter_url: "https://github.com/xperimental/nextcloud-exporter/releases/download/v{{ nextcloud_exporter_version }}/nextcloud-exporter-{{ nextcloud_exporter_version }}.linux-amd64.tar.gz"
+
+# Exporter install paths
+exporter_install_dir: "/usr/local/bin"
+
+# PostgreSQL exporter connection (localhost, same as postgresql role)
+postgres_exporter_data_source: "postgresql://{{ postgresql_user }}:{{ vault_postgresql_password }}@localhost:5432/{{ postgresql_db }}?sslmode=disable"
+
+# Redis exporter connection (Unix socket, same as redis role)
+redis_exporter_redis_addr: "unix:///var/run/redis/redis-server.sock"
+
+# Nextcloud exporter connection
+nextcloud_exporter_server: "https://localhost:443"
+nextcloud_exporter_username: "{{ vault_nextcloud_admin_user | default('admin') }}"
+nextcloud_exporter_password: "{{ vault_nextcloud_admin_pass }}"
+
+# Alerting thresholds
+monitoring_alerts_disk_warning: 80
+monitoring_alerts_disk_critical: 90
+monitoring_alerts_failed_logins: 10
+monitoring_alerts_cert_expiry_days: 30
+monitoring_alerts_backup_age_hours: 26
+
+# Prometheus config paths
+prometheus_config_dir: "/etc/prometheus"
+prometheus_alert_rules_file: "{{ prometheus_config_dir }}/alerts.yml"
+
+# Grafana API settings
+grafana_api_url: "http://localhost:{{ grafana_port }}"

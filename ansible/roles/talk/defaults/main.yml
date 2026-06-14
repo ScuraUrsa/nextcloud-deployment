@@ -1,0 +1,39 @@
+---
+# Default variables for the Coturn TURN/STUN role (Nextcloud Talk signaling)
+
+# TURN server hostname (FQDN)
+turn_server: "turn.example.com"
+
+# Static auth secret — must match Nextcloud Talk's turn_secret setting
+# Override via vault or group_vars
+turn_secret: "{{ vault_turn_secret }}"
+
+# Realm for long-term credential mechanism (set to Nextcloud domain)
+turn_realm: "{{ nextcloud_domain }}"
+
+# Listening ports
+turn_port_stun: 3478
+turn_port_tls: 5349
+
+# UDP relay port range (must be open in firewall)
+turn_port_udp_min: 20000
+turn_port_udp_max: 40000
+
+# External IP (auto-detected from ansible facts)
+turn_external_ip: "{{ ansible_default_ipv4.address }}"
+
+# Coturn package name
+turn_package: "coturn"
+
+# Coturn service name
+turn_service: "coturn"
+
+# TLS certificate paths (reuse Nextcloud's Let's Encrypt certs)
+turn_cert_file: "/etc/letsencrypt/live/{{ nextcloud_domain }}/fullchain.pem"
+turn_pkey_file: "/etc/letsencrypt/live/{{ nextcloud_domain }}/privkey.pem"
+
+# Log file
+turn_log_file: "/var/log/turnserver.log"
+
+# Additional listening IPs (empty = all interfaces)
+turn_listening_ip: "0.0.0.0"

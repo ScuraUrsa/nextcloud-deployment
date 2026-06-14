@@ -1,0 +1,52 @@
+---
+# Default variables for the Keycloak 26 role
+# Deploy Keycloak via Docker with PostgreSQL backend
+
+# Keycloak version (Docker image tag)
+keycloak_version: "26.0"
+
+# Domain / hostname for Keycloak
+keycloak_domain: "auth.example.com"
+
+# Admin credentials
+keycloak_admin_user: admin
+keycloak_admin_pass: "{{ vault_keycloak_admin_pass }}"
+
+# Realm name for Nextcloud
+keycloak_realm: nextcloud
+
+# PostgreSQL database for Keycloak (reuses postgresql role's DB server)
+keycloak_db_name: keycloak
+keycloak_db_user: keycloak
+keycloak_db_pass: "{{ vault_keycloak_db_pass }}"
+
+# Client IDs
+keycloak_saml_client_id: nextcloud-saml
+keycloak_oidc_client_id: nextcloud-oidc
+
+# Tier groups for Nextcloud
+keycloak_groups:
+  - nc-basic
+  - nc-pro
+  - nc-enterprise
+  - nc-admin
+
+# Port mapping (container listens on 8443, proxy edge mode)
+keycloak_port: 8443
+
+# Docker image
+keycloak_image: "quay.io/keycloak/keycloak:{{ keycloak_version }}"
+
+# Docker volume name for persistent data
+keycloak_volume: keycloak_data
+
+# Container name
+keycloak_container_name: keycloak
+
+# Health check settings
+keycloak_health_retries: 30
+keycloak_health_delay: 10
+
+# PostgreSQL connection details (reuses postgresql role's server on localhost)
+keycloak_db_host: localhost
+keycloak_db_port: 5432

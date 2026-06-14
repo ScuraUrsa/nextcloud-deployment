@@ -1,0 +1,90 @@
+---
+# tasks/main.yml — Collabora CODE via Docker
+# Deploy Collabora Online CODE server for Nextcloud WOPI integration
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# -------------------------------------------------------------------
+# 1. Install Docker (independent setup — no other role provides it yet)
+# -------------------------------------------------------------------
+- name: Install Docker package
+  ansible.builtin.apt:
+    name: "{{ collabora_docker_package }}"
+    state: present
+    update_cache: true
+  register: _collabora_docker_install
+  changed_when: "_collabora_docker_install.changed"
+  failed_when:
+    - _collabora_docker_install is failed
+    - not _collabora_docker_install.msg is search("unmet dependencies|held broken packages")
+
+- name: Ensure Docker service is enabled and running
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+  register: _collabora_docker_service
+  changed_when: "_collabora_docker_service.changed"
+  failed_when:
+    - _collabora_docker_service is failed
+    - "'Could not find the requested service' in _collabora_docker_service.msg | default('')"
+
+# -------------------------------------------------------------------
+# 2. Pull Collabora CODE Docker image
+# -------------------------------------------------------------------
+- name: Pull Collabora CODE Docker image
+  community.docker.docker_image:
+    name: "{{ collabora_image }}"
+    source: pull
+    force_source: "{{ collabora_version == 'latest' }}"
+  register: _collabora_image_pull
+  changed_when: "_collabora_image_pull.changed"
+  failed_when:
+    - _collabora_image_pull is failed
+    - _collabora_image_pull.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 3. Start Collabora CODE container
+#     - WOPI aliasgroup1 restricted to Nextcloud domain
+#     - Admin credentials for admin panel
+#     - SSL termination mode (Nginx handles TLS, Collabora runs plain HTTP)
+#     - Port 9980 mapped to host
+# -------------------------------------------------------------------
+- name: Start Collabora CODE container
+  community.docker.docker_container:
+    name: "{{ collabora_container_name }}"
+    image: "{{ collabora_image }}"
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ collabora_port }}:9980"
+    env:
+      aliasgroup1: "https://{{ collabora_nextcloud_domain }}:443"
+      username: "{{ collabora_admin_user }}"
+      password: "{{ collabora_admin_pass }}"
+      extra_params: "{{ collabora_extra_params }}"
+      DONT_GEN_SSL_CERT: "true"
+    capabilities:
+      - MKNOD
+  register: _collabora_container
+  changed_when: "_collabora_container.changed"
+  failed_when:
+    - _collabora_container is failed
+    - _collabora_container.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 4. Wait for Collabora health endpoint (/hosting/discovery)
+# -------------------------------------------------------------------
+- name: Wait for Collabora discovery endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ collabora_port }}/hosting/discovery"
+    method: GET
+    return_content: false
+    status_code: 200
+  register: _collabora_discovery
+  until: _collabora_discovery.status == 200
+  retries: "{{ collabora_health_retries }}"
+  delay: "{{ collabora_health_delay }}"
+  changed_when: false
+  failed_when:
+    - _collabora_discovery is failed
+    - _collabora_discovery.status != 200

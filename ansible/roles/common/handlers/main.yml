@@ -1,0 +1,19 @@
+---
+# Handlers for the common role
+
+- name: Restart sshd
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted
+  listen: "restart sshd"
+
+- name: Reload ufw
+  ansible.builtin.command: ufw reload
+  changed_when: true
+  listen: "reload ufw"
+
+- name: Restart systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: restarted
+  listen: "restart systemd-timesyncd"

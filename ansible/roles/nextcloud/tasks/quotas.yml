@@ -1,0 +1,89 @@
+---
+# tasks/quotas.yml — Set default quotas per tier group
+# Nextcloud does not natively support group-level quotas via occ,
+# but we can set per-user quotas and configure default quota for new users.
+# Group quotas are enforced via the quota_warning app and manual assignment.
+
+# -------------------------------------------------------------------
+# 1. Set default quota for new users (global default)
+# -------------------------------------------------------------------
+- name: Set global default quota for new users
+  ansible.builtin.command:
+    cmd: "php occ config:app:set files default_quota --value='{{ nextcloud_default_quota }}'"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_def_quota
+  changed_when: "_nc_def_quota.rc == 0"
+  failed_when:
+    - _nc_def_quota is failed
+    - _nc_def_quota.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 2. Configure quota_warning app defaults (if installed)
+# -------------------------------------------------------------------
+- name: Set quota warning percentage for basic tier
+  ansible.builtin.command:
+    cmd: "php occ config:app:set quota_warning info_percentage --value=80"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_qw_info
+  changed_when: "_nc_qw_info.rc == 0"
+  failed_when: false
+  when: "'quota_warning' in nextcloud_apps"
+
+- name: Set quota warning percentage for critical
+  ansible.builtin.command:
+    cmd: "php occ config:app:set quota_warning warning_percentage --value=90"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_qw_warn
+  changed_when: "_nc_qw_warn.rc == 0"
+  failed_when: false
+  when: "'quota_warning' in nextcloud_apps"
+
+- name: Set quota warning percentage for alert
+  ansible.builtin.command:
+    cmd: "php occ config:app:set quota_warning alert_percentage --value=95"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_qw_alert
+  changed_when: "_nc_qw_alert.rc == 0"
+  failed_when: false
+  when: "'quota_warning' in nextcloud_apps"
+
+# -------------------------------------------------------------------
+# 3. Document group quota assignments (informational)
+# -------------------------------------------------------------------
+- name: Display tier quota assignments
+  ansible.builtin.debug:
+    msg: |
+      Tier quotas configured:
+        nc-basic:     {{ nextcloud_tiers.basic.quota }}
+        nc-pro:       {{ nextcloud_tiers.pro.quota }}
+        nc-enterprise: {{ nextcloud_tiers.enterprise.quota }}
+
+      NOTE: Nextcloud does not support group-level quotas natively.
+      Assign per-user quotas manually via:
+        php occ user:setting <username> files quota '<quota>'
+      Or use the quota_warning app for notifications.
+      For automated group-quota enforcement, consider a custom
+      script that iterates group members and sets quotas via occ.
+
+# -------------------------------------------------------------------
+# 4. Set quota for admin user (unlimited)
+# -------------------------------------------------------------------
+- name: Set unlimited quota for admin user
+  ansible.builtin.command:
+    cmd: "php occ user:setting {{ nextcloud_admin_user }} files quota 'none'"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_admin_quota
+  changed_when: "_nc_admin_quota.rc == 0"
+  failed_when:
+    - _nc_admin_quota is failed
+    - _nc_admin_quota.rc | default(1) != 0

@@ -1,0 +1,54 @@
+---
+# Default variables for the PHP-FPM role (PHP 8.3 for Nextcloud)
+
+php_version: "8.3"
+
+# PHP memory and execution limits
+php_memory_limit: "512M"
+php_max_execution_time: 3600
+php_max_input_time: 3600
+
+# Upload limits (Nextcloud handles large files)
+php_upload_max_filesize: "16G"
+php_post_max_size: "16G"
+
+# OPCache settings
+php_opcache_memory: 256
+php_opcache_max_accelerated_files: 20000
+
+# PHP-FPM pool settings
+php_fpm_pm: static
+php_fpm_max_children: 25
+php_fpm_start_servers: 8
+php_fpm_min_spare_servers: 5
+php_fpm_max_spare_servers: 15
+php_fpm_listen: "/var/run/php/php8.3-fpm.sock"
+php_fpm_user: "www-data"
+php_fpm_group: "www-data"
+
+# PHP modules required by Nextcloud
+php_modules:
+  - php8.3-fpm
+  - php8.3-cli
+  - php8.3-common
+  - php8.3-curl
+  - php8.3-gd
+  - php8.3-mbstring
+  - php8.3-xml
+  - php8.3-simplexml
+  - php8.3-zip
+  - php8.3-bz2
+  - php8.3-intl
+  - php8.3-bcmath
+  - php8.3-gmp
+  - php8.3-opcache
+  - php8.3-apcu
+  - php8.3-redis
+  - php8.3-pgsql
+  - php8.3-ldap
+  - php8.3-imagick
+  - php8.3-sodium
+  - php8.3-openssl
+
+# Disabled functions for security
+php_disabled_functions: "exec,passthru,shell_exec,system,proc_open,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source"

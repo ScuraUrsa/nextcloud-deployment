@@ -1,0 +1,73 @@
+---
+# tasks/main.yml — Redis 7 installation and tuning for Nextcloud
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# -------------------------------------------------------------------
+# 1. Install redis-server from Ubuntu repos
+# -------------------------------------------------------------------
+- name: Install redis-server package
+  ansible.builtin.apt:
+    name: "{{ redis_package }}"
+    state: present
+    update_cache: true
+    install_recommends: false
+  register: _redis_pkg_install
+  changed_when: "_redis_pkg_install.changed"
+  failed_when:
+    - _redis_pkg_install is failed
+    - not _redis_pkg_install.msg is search("unmet dependencies|held broken packages")
+
+# -------------------------------------------------------------------
+# 2. Ensure the Unix socket directory exists with correct permissions
+# -------------------------------------------------------------------
+- name: Ensure Redis socket directory exists
+  ansible.builtin.file:
+    path: "{{ redis_socket | dirname }}"
+    state: directory
+    owner: redis
+    group: redis
+    mode: "0750"
+  changed_when: false
+
+# -------------------------------------------------------------------
+# 3. Deploy redis.conf from template
+# -------------------------------------------------------------------
+- name: Deploy Redis configuration (Unix socket, maxmemory, allkeys-lru)
+  ansible.builtin.template:
+    src: redis.conf.j2
+    dest: /etc/redis/redis.conf
+    owner: redis
+    group: redis
+    mode: "0640"
+  register: _redis_conf
+  changed_when: "_redis_conf.changed"
+  failed_when:
+    - _redis_conf is failed
+    - _redis_conf.rc | default(0) != 0
+  notify: "restart redis-server"
+
+# -------------------------------------------------------------------
+# 4. Ensure redis-server is enabled and running
+# -------------------------------------------------------------------
+- name: Ensure redis-server is enabled and running
+  ansible.builtin.systemd:
+    name: redis-server
+    enabled: true
+    state: started
+  register: _redis_service
+  changed_when: "_redis_service.changed"
+  failed_when:
+    - _redis_service is failed
+    - "'Could not find the requested service' in _redis_service.msg | default('')"
+
+# -------------------------------------------------------------------
+# 5. Verify Redis responds to PING via Unix socket
+# -------------------------------------------------------------------
+- name: Verify Redis responds to PING via Unix socket
+  ansible.builtin.command:
+    cmd: "redis-cli -s {{ redis_socket }} PING"
+  register: _redis_ping
+  changed_when: false
+  failed_when:
+    - _redis_ping.rc != 0
+    - _redis_ping.stdout != "PONG"

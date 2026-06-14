@@ -1,0 +1,20 @@
+---
+# Default variables for the Redis role (Redis 7 for Nextcloud caching/locking/sessions)
+
+# Memory tuning
+redis_maxmemory: "512mb"
+redis_maxmemory_policy: "allkeys-lru"
+
+# Unix socket configuration (no TCP)
+redis_port: 0
+redis_socket: "/var/run/redis/redis-server.sock"
+redis_socket_perm: 660
+
+# Persistence (RDB snapshots)
+redis_save: "900 1 300 10 60 10000"
+
+# Single database for Nextcloud
+redis_databases: 1
+
+# Redis package
+redis_package: "redis-server"

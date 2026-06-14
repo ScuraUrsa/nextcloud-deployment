@@ -1,0 +1,72 @@
+---
+# Default variables for the Backup role — BorgBackup + borgmatic
+# Daily backups with retention, pre-backup PostgreSQL dump and Keycloak realm export
+
+# -------------------------------------------------------------------
+# Borg repository locations
+# -------------------------------------------------------------------
+backup_target: "/backup/nextcloud"
+backup_offsite: "ssh://borg@backup.example.com/./nextcloud"
+
+# -------------------------------------------------------------------
+# Retention policies (prune rules)
+# -------------------------------------------------------------------
+backup_retention_daily: 7
+backup_retention_weekly: 4
+backup_retention_monthly: 6
+backup_retention_yearly: 2
+
+# -------------------------------------------------------------------
+# Compression and encryption
+# -------------------------------------------------------------------
+backup_compression: "zstd,3"
+backup_encryption_passphrase: "{{ vault_borg_passphrase }}"
+
+# -------------------------------------------------------------------
+# Source directories to back up
+# -------------------------------------------------------------------
+backup_sources:
+  - /data/nextcloud
+  - /var/www/nextcloud/config
+  - /etc/nginx
+  - /etc/php
+  - /etc/postgresql
+
+# -------------------------------------------------------------------
+# Pre-backup hooks
+# -------------------------------------------------------------------
+backup_pre_hook_pg_dump: true
+backup_keycloak_realm: true
+
+# -------------------------------------------------------------------
+# PostgreSQL dump settings (reuses postgresql role variables)
+# -------------------------------------------------------------------
+backup_pg_dump_dir: "/backup/nextcloud/pg_dumps"
+backup_pg_dump_db: "{{ postgresql_db | default('nextcloud') }}"
+backup_pg_dump_user: "{{ postgresql_user | default('nextcloud') }}"
+
+# -------------------------------------------------------------------
+# Keycloak realm export settings (reuses keycloak role variables)
+# -------------------------------------------------------------------
+backup_keycloak_realm_name: "{{ keycloak_realm | default('nextcloud') }}"
+backup_keycloak_port: "{{ keycloak_port | default(8443) }}"
+backup_keycloak_admin_user: "{{ keycloak_admin_user | default('admin') }}"
+backup_keycloak_admin_pass: "{{ vault_keycloak_admin_pass | default('') }}"
+backup_keycloak_export_dir: "/backup/nextcloud/keycloak_exports"
+
+# -------------------------------------------------------------------
+# borgmatic systemd timer schedule (daily at 03:00 CEST = 01:00 UTC)
+# -------------------------------------------------------------------
+backup_schedule_oncalendar: "*-*-* 01:00:00"
+
+# -------------------------------------------------------------------
+# borgmatic config path
+# -------------------------------------------------------------------
+backup_borgmatic_config_dir: "/etc/borgmatic"
+backup_borgmatic_config_file: "/etc/borgmatic/config.yaml"
+
+# -------------------------------------------------------------------
+# SSH key for offsite replication
+# -------------------------------------------------------------------
+backup_ssh_key_path: "/root/.ssh/borg_offsite"
+backup_ssh_known_hosts_entry: "{{ vault_borg_offsite_ssh_hostkey | default('') }}"

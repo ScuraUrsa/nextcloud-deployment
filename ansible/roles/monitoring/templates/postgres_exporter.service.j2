@@ -1,0 +1,26 @@
+# {{ ansible_managed | default('Managed by Ansible') }}
+[Unit]
+Description=PostgreSQL Exporter for Prometheus
+Documentation=https://github.com/prometheus-community/postgres_exporter
+After=network.target postgresql@{{ postgresql_version }}-main.service
+Wants=postgresql@{{ postgresql_version }}-main.service
+
+[Service]
+Type=simple
+User=nobody
+Group=nogroup
+Environment="DATA_SOURCE_NAME={{ postgres_exporter_data_source }}"
+ExecStart={{ exporter_install_dir }}/postgres_exporter \
+  --web.listen-address=:{{ postgres_exporter_port }} \
+  --web.telemetry-path=/metrics \
+  --collector.stat_statements
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

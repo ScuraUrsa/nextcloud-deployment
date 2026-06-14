@@ -1,0 +1,10 @@
+---
+# Elasticsearch role defaults
+elasticsearch_version: "8.x"
+elasticsearch_heap: "1g"
+elasticsearch_cluster_name: nextcloud
+elasticsearch_node_name: "nextcloud-node-1"
+elasticsearch_network_host: "127.0.0.1"
+elasticsearch_http_port: 9200
+elasticsearch_discovery_type: "single-node"
+elasticsearch_xpack_security: true

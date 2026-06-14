@@ -1,0 +1,9 @@
+---
+# handlers/main.yml — Coturn service handlers
+
+- name: restart coturn
+  ansible.builtin.systemd:
+    name: "{{ turn_service }}"
+    state: restarted
+    daemon_reload: true
+  changed_when: true

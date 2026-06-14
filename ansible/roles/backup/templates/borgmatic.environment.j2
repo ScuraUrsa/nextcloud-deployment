@@ -1,0 +1,9 @@
+# {{ ansible_managed | default('Managed by Ansible — backup role') }}
+# Environment variables for borgmatic systemd service
+# This file is mode 0400 — readable only by root
+
+BORG_PASSPHRASE={{ backup_encryption_passphrase }}
+BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK=yes
+{% if backup_offsite is defined and backup_offsite | length > 0 %}
+BORG_RSH=ssh -i {{ backup_ssh_key_path }} -o StrictHostKeyChecking=yes
+{% endif %}

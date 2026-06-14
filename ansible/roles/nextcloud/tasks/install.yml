@@ -1,0 +1,190 @@
+---
+# tasks/install.yml — Download, verify SHA256, extract Nextcloud
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# -------------------------------------------------------------------
+# 1. Install required system packages for download/verification
+# -------------------------------------------------------------------
+- name: Install packages for download and verification
+  ansible.builtin.apt:
+    name:
+      - curl
+      - bzip2
+      - tar
+      - coreutils
+    state: present
+    install_recommends: false
+  register: _nc_dl_pkgs
+  changed_when: "_nc_dl_pkgs.changed"
+  failed_when:
+    - _nc_dl_pkgs is failed
+    - not _nc_dl_pkgs.msg is search("unmet dependencies|held broken packages")
+
+# -------------------------------------------------------------------
+# 2. Download Nextcloud SHA256 checksum file
+# -------------------------------------------------------------------
+- name: Download Nextcloud SHA256 checksum file
+  ansible.builtin.get_url:
+    url: "{{ nextcloud_download_checksum_url }}"
+    dest: "{{ nextcloud_download_checksum_file }}"
+    mode: "0644"
+    force: true
+  register: _nc_checksum_dl
+  changed_when: "_nc_checksum_dl.changed"
+  failed_when:
+    - _nc_checksum_dl is failed
+    - _nc_checksum_dl.status_code | default(200) not in [200, 304]
+
+# -------------------------------------------------------------------
+# 3. Download Nextcloud tarball (skip if already present and checksum matches)
+# -------------------------------------------------------------------
+- name: Check if existing tarball matches checksum
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      grep "nextcloud-{{ nextcloud_version }}.tar.bz2" {{ nextcloud_download_checksum_file }}
+      | cut -d' ' -f1
+    executable: /bin/bash
+  register: _nc_expected_hash
+  changed_when: false
+  failed_when: false
+
+- name: Compute SHA256 of existing tarball (if present)
+  ansible.builtin.stat:
+    path: "{{ nextcloud_download_archive }}"
+  register: _nc_archive_stat
+
+- name: Verify existing tarball checksum
+  ansible.builtin.shell:
+    cmd: "sha256sum {{ nextcloud_download_archive }} | cut -d' ' -f1"
+    executable: /bin/bash
+  register: _nc_actual_hash
+  changed_when: false
+  failed_when: false
+  when: _nc_archive_stat.stat.exists
+
+- name: Download Nextcloud tarball
+  ansible.builtin.get_url:
+    url: "{{ nextcloud_download_url }}"
+    dest: "{{ nextcloud_download_archive }}"
+    mode: "0644"
+    force: false
+    timeout: 600
+  register: _nc_tarball_dl
+  changed_when: "_nc_tarball_dl.changed"
+  failed_when:
+    - _nc_tarball_dl is failed
+    - _nc_tarball_dl.status_code | default(200) not in [200, 304]
+  when: >-
+    not _nc_archive_stat.stat.exists
+    or _nc_actual_hash.stdout | default('') != _nc_expected_hash.stdout | default('')
+
+# -------------------------------------------------------------------
+# 4. Verify downloaded tarball SHA256
+# -------------------------------------------------------------------
+- name: Verify Nextcloud tarball SHA256 checksum
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      cd /tmp &&
+      sha256sum -c {{ nextcloud_download_checksum_file | basename }}
+      --ignore-missing 2>&1
+      | grep "nextcloud-{{ nextcloud_version }}.tar.bz2"
+    executable: /bin/bash
+    chdir: /tmp
+  register: _nc_verify
+  changed_when: false
+  failed_when:
+    - _nc_verify is failed
+    - "'OK' not in _nc_verify.stdout"
+
+# -------------------------------------------------------------------
+# 5. Create web root directory
+# -------------------------------------------------------------------
+- name: Ensure web root directory exists
+  ansible.builtin.file:
+    path: "{{ nextcloud_web_root }}"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    mode: "0755"
+
+# -------------------------------------------------------------------
+# 6. Extract Nextcloud tarball to web root
+# -------------------------------------------------------------------
+- name: Extract Nextcloud tarball to web root
+  ansible.builtin.unarchive:
+    src: "{{ nextcloud_download_archive }}"
+    dest: "{{ nextcloud_web_root }}"
+    remote_src: true
+    owner: "www-data"
+    group: "www-data"
+    extra_opts:
+      - "--strip-components=1"
+    creates: "{{ nextcloud_web_root }}/index.php"
+  register: _nc_extract
+  changed_when: "_nc_extract.changed"
+  failed_when:
+    - _nc_extract is failed
+    - _nc_extract.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 7. Create data directory with correct permissions
+# -------------------------------------------------------------------
+- name: Ensure data directory exists
+  ansible.builtin.file:
+    path: "{{ nextcloud_data_dir }}"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    mode: "0750"
+
+# -------------------------------------------------------------------
+# 8. Create log directory
+# -------------------------------------------------------------------
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ nextcloud_log_dir }}"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    mode: "0755"
+
+# -------------------------------------------------------------------
+# 9. Create apps-extra and custom-apps directories
+# -------------------------------------------------------------------
+- name: Ensure extra app directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    mode: "0755"
+  loop:
+    - "{{ nextcloud_web_root }}/apps-extra"
+    - "{{ nextcloud_web_root }}/custom-apps"
+
+# -------------------------------------------------------------------
+# 10. Set correct ownership on entire web root
+# -------------------------------------------------------------------
+- name: Set ownership on web root recursively
+  ansible.builtin.file:
+    path: "{{ nextcloud_web_root }}"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    recurse: true
+  changed_when: false
+
+# -------------------------------------------------------------------
+# 11. Clean up downloaded files (optional, saves disk)
+# -------------------------------------------------------------------
+- name: Remove downloaded tarball and checksum
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ nextcloud_download_archive }}"
+    - "{{ nextcloud_download_checksum_file }}"
+  when: false  # Disabled by default; enable to save disk space
+  changed_when: false

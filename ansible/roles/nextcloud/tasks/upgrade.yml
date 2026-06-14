@@ -1,0 +1,231 @@
+---
+# tasks/upgrade.yml — Nextcloud upgrade procedure
+# Placeholder: maintenance mode, backup, download, extract, occ upgrade, app update, indices, bigint
+# Tagged with 'never' — only runs when explicitly requested
+
+# -------------------------------------------------------------------
+# 1. Enable maintenance mode
+# -------------------------------------------------------------------
+- name: Enable maintenance mode before upgrade
+  ansible.builtin.command:
+    cmd: "php occ maintenance:mode --on"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_maint_on
+  changed_when: "'enabled' in _nc_upg_maint_on.stdout | default('')"
+  failed_when:
+    - _nc_upg_maint_on is failed
+    - _nc_upg_maint_on.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 2. Create backup directory
+# -------------------------------------------------------------------
+- name: Ensure upgrade backup directory exists
+  ansible.builtin.file:
+    path: "{{ nextcloud_upgrade_backup_dir }}"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    mode: "0750"
+
+# -------------------------------------------------------------------
+# 3. Backup current config.php
+# -------------------------------------------------------------------
+- name: Backup current config.php
+  ansible.builtin.copy:
+    src: "{{ nextcloud_web_root }}/config/config.php"
+    dest: "{{ nextcloud_upgrade_backup_dir }}/config.php.{{ ansible_date_time.epoch }}"
+    remote_src: true
+    owner: "www-data"
+    group: "www-data"
+    mode: "0640"
+  register: _nc_upg_cfg_backup
+  changed_when: "_nc_upg_cfg_backup.changed"
+
+# -------------------------------------------------------------------
+# 4. Backup current apps list
+# -------------------------------------------------------------------
+- name: Capture current app list before upgrade
+  ansible.builtin.command:
+    cmd: "php occ app:list --output=json"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_app_list
+  changed_when: false
+  failed_when: false
+
+- name: Save app list to backup file
+  ansible.builtin.copy:
+    content: "{{ _nc_upg_app_list.stdout | default('{}') }}"
+    dest: "{{ nextcloud_upgrade_backup_dir }}/app-list.{{ ansible_date_time.epoch }}.json"
+    owner: "www-data"
+    group: "www-data"
+    mode: "0640"
+  changed_when: true
+
+# -------------------------------------------------------------------
+# 5. Download new Nextcloud version
+# -------------------------------------------------------------------
+- name: Download new Nextcloud version tarball
+  ansible.builtin.get_url:
+    url: "{{ nextcloud_download_url }}"
+    dest: "{{ nextcloud_download_archive }}"
+    mode: "0644"
+    timeout: 600
+  register: _nc_upg_dl
+  changed_when: "_nc_upg_dl.changed"
+  failed_when:
+    - _nc_upg_dl is failed
+    - _nc_upg_dl.status_code | default(200) not in [200, 304]
+
+# -------------------------------------------------------------------
+# 6. Verify SHA256 checksum
+# -------------------------------------------------------------------
+- name: Download SHA256 checksum for new version
+  ansible.builtin.get_url:
+    url: "{{ nextcloud_download_checksum_url }}"
+    dest: "{{ nextcloud_download_checksum_file }}"
+    mode: "0644"
+  register: _nc_upg_chk_dl
+  changed_when: "_nc_upg_chk_dl.changed"
+
+- name: Verify new tarball SHA256 checksum
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      cd /tmp &&
+      sha256sum -c {{ nextcloud_download_checksum_file | basename }}
+      --ignore-missing 2>&1
+      | grep "nextcloud-{{ nextcloud_version }}.tar.bz2"
+    executable: /bin/bash
+    chdir: /tmp
+  register: _nc_upg_verify
+  changed_when: false
+  failed_when:
+    - _nc_upg_verify is failed
+    - "'OK' not in _nc_upg_verify.stdout"
+
+# -------------------------------------------------------------------
+# 7. Extract new version over existing installation
+# -------------------------------------------------------------------
+- name: Extract new Nextcloud version over existing installation
+  ansible.builtin.unarchive:
+    src: "{{ nextcloud_download_archive }}"
+    dest: "{{ nextcloud_web_root }}"
+    remote_src: true
+    owner: "www-data"
+    group: "www-data"
+    extra_opts:
+      - "--strip-components=1"
+      - "--keep-old-files"
+  register: _nc_upg_extract
+  changed_when: "_nc_upg_extract.changed"
+  failed_when:
+    - _nc_upg_extract is failed
+    - _nc_upg_extract.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 8. Run occ upgrade
+# -------------------------------------------------------------------
+- name: Run Nextcloud upgrade
+  ansible.builtin.command:
+    cmd: "php occ upgrade --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_run
+  changed_when: "'updated' in _nc_upg_run.stdout | default('') or 'upgrade' in _nc_upg_run.stdout | default('')"
+  failed_when:
+    - _nc_upg_run is failed
+    - _nc_upg_run.rc | default(1) != 0
+    - "'already' not in _nc_upg_run.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 9. Update all apps
+# -------------------------------------------------------------------
+- name: Update all installed apps
+  ansible.builtin.command:
+    cmd: "php occ app:update --all --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_apps
+  changed_when: "'updated' in _nc_upg_apps.stdout | default('')"
+  failed_when:
+    - _nc_upg_apps is failed
+    - _nc_upg_apps.rc | default(1) != 0
+    - "'no updates' not in _nc_upg_apps.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 10. Add missing database indices
+# -------------------------------------------------------------------
+- name: Add missing database indices after upgrade
+  ansible.builtin.command:
+    cmd: "php occ db:add-missing-indices --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_indices
+  changed_when: "'added' in _nc_upg_indices.stdout | default('')"
+  failed_when:
+    - _nc_upg_indices is failed
+    - _nc_upg_indices.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 11. Add missing primary keys
+# -------------------------------------------------------------------
+- name: Add missing primary keys after upgrade
+  ansible.builtin.command:
+    cmd: "php occ db:add-missing-primary-keys --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_pkeys
+  changed_when: "'added' in _nc_upg_pkeys.stdout | default('')"
+  failed_when:
+    - _nc_upg_pkeys is failed
+    - _nc_upg_pkeys.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 12. Convert filecache to bigint (if needed)
+# -------------------------------------------------------------------
+- name: Convert filecache to bigint after upgrade
+  ansible.builtin.command:
+    cmd: "php occ db:convert-filecache-bigint --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_bigint
+  changed_when: "'converted' in _nc_upg_bigint.stdout | default('')"
+  failed_when:
+    - _nc_upg_bigint is failed
+    - _nc_upg_bigint.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 13. Disable maintenance mode
+# -------------------------------------------------------------------
+- name: Disable maintenance mode after upgrade
+  ansible.builtin.command:
+    cmd: "php occ maintenance:mode --off"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_upg_maint_off
+  changed_when: "'disabled' in _nc_upg_maint_off.stdout | default('')"
+  failed_when:
+    - _nc_upg_maint_off is failed
+    - _nc_upg_maint_off.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 14. Clean up downloaded files
+# -------------------------------------------------------------------
+- name: Remove downloaded upgrade tarball and checksum
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ nextcloud_download_archive }}"
+    - "{{ nextcloud_download_checksum_file }}"
+  changed_when: false

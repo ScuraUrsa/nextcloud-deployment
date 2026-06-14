@@ -1,0 +1,96 @@
+---
+# tasks/groups.yml — Create Nextcloud tier groups
+# nc-basic, nc-pro, nc-enterprise, nc-admin
+
+# -------------------------------------------------------------------
+# 1. Create nc-basic group
+# -------------------------------------------------------------------
+- name: Create nc-basic group
+  ansible.builtin.command:
+    cmd: "php occ group:add nc-basic"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_group_basic
+  changed_when: "'created' in _nc_group_basic.stdout | default('')"
+  failed_when:
+    - _nc_group_basic is failed
+    - _nc_group_basic.rc | default(1) != 0
+    - "'already exists' not in _nc_group_basic.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 2. Create nc-pro group
+# -------------------------------------------------------------------
+- name: Create nc-pro group
+  ansible.builtin.command:
+    cmd: "php occ group:add nc-pro"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_group_pro
+  changed_when: "'created' in _nc_group_pro.stdout | default('')"
+  failed_when:
+    - _nc_group_pro is failed
+    - _nc_group_pro.rc | default(1) != 0
+    - "'already exists' not in _nc_group_pro.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 3. Create nc-enterprise group
+# -------------------------------------------------------------------
+- name: Create nc-enterprise group
+  ansible.builtin.command:
+    cmd: "php occ group:add nc-enterprise"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_group_ent
+  changed_when: "'created' in _nc_group_ent.stdout | default('')"
+  failed_when:
+    - _nc_group_ent is failed
+    - _nc_group_ent.rc | default(1) != 0
+    - "'already exists' not in _nc_group_ent.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 4. Create nc-admin group
+# -------------------------------------------------------------------
+- name: Create nc-admin group
+  ansible.builtin.command:
+    cmd: "php occ group:add {{ nextcloud_admin_group }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_group_admin
+  changed_when: "'created' in _nc_group_admin.stdout | default('')"
+  failed_when:
+    - _nc_group_admin is failed
+    - _nc_group_admin.rc | default(1) != 0
+    - "'already exists' not in _nc_group_admin.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 5. Add admin user to nc-admin group
+# -------------------------------------------------------------------
+- name: Add admin user to nc-admin group
+  ansible.builtin.command:
+    cmd: "php occ group:adduser {{ nextcloud_admin_group }} {{ nextcloud_admin_user }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_admin_add
+  changed_when: "'added' in _nc_admin_add.stdout | default('')"
+  failed_when:
+    - _nc_admin_add is failed
+    - _nc_admin_add.rc | default(1) != 0
+    - "'already' not in _nc_admin_add.stdout | default('')"
+
+# -------------------------------------------------------------------
+# 6. List all groups for verification
+# -------------------------------------------------------------------
+- name: List all Nextcloud groups
+  ansible.builtin.command:
+    cmd: "php occ group:list"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_group_list
+  changed_when: false
+  failed_when: false

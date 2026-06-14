@@ -1,0 +1,26 @@
+# {{ ansible_managed | default('Managed by Ansible') }}
+[Unit]
+Description=Nextcloud Exporter for Prometheus
+Documentation=https://github.com/xperimental/nextcloud-exporter
+After=network.target
+
+[Service]
+Type=simple
+User=nobody
+Group=nogroup
+Environment="NEXTCLOUD_SERVER={{ nextcloud_exporter_server }}"
+Environment="NEXTCLOUD_USERNAME={{ nextcloud_exporter_username }}"
+Environment="NEXTCLOUD_PASSWORD={{ nextcloud_exporter_password }}"
+Environment="NEXTCLOUD_LISTEN_ADDRESS=:{{ nextcloud_exporter_port }}"
+Environment="NEXTCLOUD_TLS_SKIP_VERIFY=true"
+ExecStart={{ exporter_install_dir }}/nextcloud-exporter
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

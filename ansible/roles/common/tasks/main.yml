@@ -1,0 +1,230 @@
+---
+# tasks/main.yml — OS baseline for Ubuntu 24.04 LTS
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# -------------------------------------------------------------------
+# 1. Update apt cache
+# -------------------------------------------------------------------
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  changed_when: false
+  failed_when: false
+
+# -------------------------------------------------------------------
+# 2. Install essential packages
+# -------------------------------------------------------------------
+- name: Install essential packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    install_recommends: false
+  register: _common_pkg_install
+  changed_when: "_common_pkg_install.changed"
+  failed_when:
+    - _common_pkg_install is failed
+    - not _common_pkg_install.msg is search("unmet dependencies|held broken packages")
+
+# -------------------------------------------------------------------
+# 3. Set timezone
+# -------------------------------------------------------------------
+- name: Set timezone to {{ common_timezone }}
+  ansible.builtin.timezone:
+    name: "{{ common_timezone }}"
+  register: _common_tz
+  changed_when: "_common_tz.diff.before != _common_tz.diff.after"
+  failed_when:
+    - _common_tz is failed
+    - _common_tz.msg is defined
+
+# -------------------------------------------------------------------
+# 4. Configure NTP via systemd-timesyncd
+# -------------------------------------------------------------------
+- name: Ensure systemd-timesyncd is installed
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+    state: present
+  changed_when: false
+  failed_when: false
+
+- name: Ensure systemd-timesyncd is enabled and running
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+  register: _common_timesyncd
+  changed_when: "_common_timesyncd.changed"
+  failed_when:
+    - _common_timesyncd is failed
+    - "'Could not find the requested service' in _common_timesyncd.msg | default('')"
+
+# -------------------------------------------------------------------
+# 5. Create admin user
+# -------------------------------------------------------------------
+- name: Create admin user {{ common_admin_user }}
+  ansible.builtin.user:
+    name: "{{ common_admin_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+    state: present
+  register: _common_admin_user
+  changed_when: "_common_admin_user.changed"
+  failed_when:
+    - _common_admin_user is failed
+    - _common_admin_user.rc | default(0) != 0
+
+- name: Ensure admin user .ssh directory exists
+  ansible.builtin.file:
+    path: "/home/{{ common_admin_user }}/.ssh"
+    state: directory
+    owner: "{{ common_admin_user }}"
+    group: "{{ common_admin_user }}"
+    mode: "0700"
+  register: _common_ssh_dir
+  changed_when: "_common_ssh_dir.changed"
+  failed_when:
+    - _common_ssh_dir is failed
+    - _common_ssh_dir.rc | default(0) != 0
+
+- name: Deploy admin user SSH authorized_keys
+  ansible.builtin.copy:
+    content: "{{ common_admin_ssh_key | default('') }}"
+    dest: "/home/{{ common_admin_user }}/.ssh/authorized_keys"
+    owner: "{{ common_admin_user }}"
+    group: "{{ common_admin_user }}"
+    mode: "0600"
+  register: _common_auth_keys
+  changed_when: "_common_auth_keys.changed"
+  failed_when:
+    - _common_auth_keys is failed
+    - _common_auth_keys.rc | default(0) != 0
+  when: common_admin_ssh_key is defined and common_admin_ssh_key | length > 0
+
+# -------------------------------------------------------------------
+# 6. SSH hardening
+# -------------------------------------------------------------------
+- name: Deploy hardened sshd_config from template
+  ansible.builtin.template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/sshd -t -f %s"
+  register: _common_sshd_config
+  changed_when: "_common_sshd_config.changed"
+  failed_when:
+    - _common_sshd_config is failed
+    - _common_sshd_config.rc | default(0) != 0
+  notify: "restart sshd"
+
+- name: Deploy MOTD from template
+  ansible.builtin.template:
+    src: motd.j2
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: "0644"
+  register: _common_motd
+  changed_when: "_common_motd.changed"
+  failed_when:
+    - _common_motd is failed
+    - _common_motd.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 7. Configure UFW firewall
+# -------------------------------------------------------------------
+- name: Ensure UFW is installed
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  changed_when: false
+  failed_when: false
+
+- name: Set UFW default incoming policy to {{ common_ufw_default_incoming }}
+  community.general.ufw:
+    direction: incoming
+    policy: "{{ common_ufw_default_incoming }}"
+  register: _common_ufw_in
+  changed_when: "_common_ufw_in.changed"
+  failed_when:
+    - _common_ufw_in is failed
+    - _common_ufw_in.rc | default(0) != 0
+
+- name: Set UFW default outgoing policy to {{ common_ufw_default_outgoing }}
+  community.general.ufw:
+    direction: outgoing
+    policy: "{{ common_ufw_default_outgoing }}"
+  register: _common_ufw_out
+  changed_when: "_common_ufw_out.changed"
+  failed_when:
+    - _common_ufw_out is failed
+    - _common_ufw_out.rc | default(0) != 0
+
+- name: Allow required ports through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop: "{{ common_ufw_allowed_ports }}"
+  register: _common_ufw_ports
+  changed_when: "_common_ufw_ports.changed"
+  failed_when:
+    - _common_ufw_ports is failed
+    - _common_ufw_ports.rc | default(0) != 0
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  register: _common_ufw_enable
+  changed_when: "_common_ufw_enable.changed"
+  failed_when:
+    - _common_ufw_enable is failed
+    - _common_ufw_enable.rc | default(0) != 0
+  notify: "reload ufw"
+
+# -------------------------------------------------------------------
+# 8. Enable unattended-upgrades for security updates
+# -------------------------------------------------------------------
+- name: Install unattended-upgrades package
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - update-notifier-common
+    state: present
+  changed_when: false
+  failed_when: false
+
+- name: Configure unattended-upgrades origins
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "/etc/apt/apt.conf.d/{{ item | basename | regex_replace('\\.j2$', '') }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - 50unattended-upgrades.j2
+    - 20auto-upgrades.j2
+  register: _common_unattended
+  changed_when: "_common_unattended.changed"
+  failed_when:
+    - _common_unattended is failed
+    - _common_unattended.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 9. Set swappiness to {{ common_swappiness }}
+# -------------------------------------------------------------------
+- name: Set vm.swappiness to {{ common_swappiness }}
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "{{ common_swappiness }}"
+    state: present
+    reload: true
+  register: _common_swappiness
+  changed_when: "_common_swappiness.changed"
+  failed_when:
+    - _common_swappiness is failed
+    - _common_swappiness.rc | default(0) != 0

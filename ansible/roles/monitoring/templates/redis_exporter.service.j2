@@ -1,0 +1,25 @@
+# {{ ansible_managed | default('Managed by Ansible') }}
+[Unit]
+Description=Redis Exporter for Prometheus
+Documentation=https://github.com/oliver006/redis_exporter
+After=network.target redis-server.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=redis
+Group=redis
+ExecStart={{ exporter_install_dir }}/redis_exporter \
+  --redis.addr={{ redis_exporter_redis_addr }} \
+  --web.listen-address=:{{ redis_exporter_port }} \
+  --web.telemetry-path=/metrics
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

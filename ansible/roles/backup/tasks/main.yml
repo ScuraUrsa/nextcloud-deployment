@@ -1,0 +1,266 @@
+---
+# Tasks for the Backup role — BorgBackup + borgmatic
+# Daily backups with retention, pre-backup PostgreSQL dump and Keycloak realm export
+# All tasks are idempotent
+
+# -------------------------------------------------------------------
+# 1. Install BorgBackup and borgmatic from Ubuntu repositories
+# -------------------------------------------------------------------
+- name: Install BorgBackup and borgmatic packages
+  ansible.builtin.apt:
+    name:
+      - borgbackup
+      - borgmatic
+    state: present
+    update_cache: true
+  tags: [backup, packages]
+
+# -------------------------------------------------------------------
+# 2. Create backup directories
+# -------------------------------------------------------------------
+- name: Ensure local backup target directory exists
+  ansible.builtin.file:
+    path: "{{ backup_target }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  tags: [backup, directories]
+
+- name: Ensure PostgreSQL dump directory exists
+  ansible.builtin.file:
+    path: "{{ backup_pg_dump_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: backup_pre_hook_pg_dump | bool
+  tags: [backup, directories, postgresql]
+
+- name: Ensure Keycloak export directory exists
+  ansible.builtin.file:
+    path: "{{ backup_keycloak_export_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: backup_keycloak_realm | bool
+  tags: [backup, directories, keycloak]
+
+- name: Ensure borgmatic config directory exists
+  ansible.builtin.file:
+    path: "{{ backup_borgmatic_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [backup, directories, config]
+
+# -------------------------------------------------------------------
+# 3. Deploy borgmatic passphrase file (used by encryption_passcommand)
+# -------------------------------------------------------------------
+- name: Deploy borgmatic passphrase file
+  ansible.builtin.copy:
+    content: "{{ backup_encryption_passphrase }}"
+    dest: "{{ backup_borgmatic_config_dir }}/passphrase"
+    owner: root
+    group: root
+    mode: "0400"
+  no_log: true
+  tags: [backup, config, secrets]
+
+# -------------------------------------------------------------------
+# 4. Deploy borgmatic environment file for systemd service
+# -------------------------------------------------------------------
+- name: Deploy borgmatic systemd environment file
+  ansible.builtin.template:
+    src: borgmatic.environment.j2
+    dest: "{{ backup_borgmatic_config_dir }}/environment"
+    owner: root
+    group: root
+    mode: "0400"
+  no_log: true
+  tags: [backup, config, secrets, systemd]
+
+# -------------------------------------------------------------------
+# 5. Deploy Keycloak realm export script for pre-backup hook
+# -------------------------------------------------------------------
+- name: Deploy Keycloak realm export script
+  ansible.builtin.template:
+    src: borgmatic-keycloak-export.sh.j2
+    dest: /usr/local/bin/borgmatic-keycloak-export.sh
+    owner: root
+    group: root
+    mode: "0700"
+  when: backup_keycloak_realm | bool
+  tags: [backup, config, keycloak]
+
+# -------------------------------------------------------------------
+# 6. Set up SSH for offsite replication
+# -------------------------------------------------------------------
+- name: Deploy SSH private key for offsite Borg repository
+  ansible.builtin.copy:
+    content: "{{ vault_borg_offsite_ssh_key }}"
+    dest: "{{ backup_ssh_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: backup_offsite is defined and backup_offsite | length > 0
+  tags: [backup, ssh, offsite]
+
+- name: Add offsite host to SSH known_hosts
+  ansible.builtin.known_hosts:
+    name: "{{ backup_offsite | regex_replace('^ssh://([^@]+@)?([^:/]+).*$', '\\2') }}"
+    key: "{{ backup_ssh_known_hosts_entry }}"
+    state: present
+  when:
+    - backup_offsite is defined and backup_offsite | length > 0
+    - backup_ssh_known_hosts_entry | length > 0
+  tags: [backup, ssh, offsite]
+
+# -------------------------------------------------------------------
+# 7. Initialize local Borg repository (idempotent — checks first)
+# -------------------------------------------------------------------
+- name: Check if local Borg repository already exists
+  ansible.builtin.command:
+    cmd: "borg info {{ backup_target }}"
+  environment:
+    BORG_PASSPHRASE: "{{ backup_encryption_passphrase }}"
+  register: _borg_local_info
+  changed_when: false
+  failed_when: false
+  tags: [backup, repo, init]
+
+- name: Initialize local Borg repository
+  ansible.builtin.command:
+    cmd: >-
+      borg init
+      --encryption repokey-blake2
+      {{ backup_target }}
+  environment:
+    BORG_PASSPHRASE: "{{ backup_encryption_passphrase }}"
+  when: _borg_local_info.rc != 0
+  register: _borg_local_init
+  changed_when: _borg_local_init.rc == 0
+  tags: [backup, repo, init]
+
+# -------------------------------------------------------------------
+# 8. Initialize offsite Borg repository (idempotent — checks first)
+# -------------------------------------------------------------------
+- name: Check if offsite Borg repository already exists
+  ansible.builtin.command:
+    cmd: "borg info {{ backup_offsite }}"
+  environment:
+    BORG_PASSPHRASE: "{{ backup_encryption_passphrase }}"
+    BORG_RSH: "ssh -i {{ backup_ssh_key_path }} -o StrictHostKeyChecking=yes"
+  register: _borg_offsite_info
+  changed_when: false
+  failed_when: false
+  when: backup_offsite is defined and backup_offsite | length > 0
+  tags: [backup, repo, offsite, init]
+
+- name: Initialize offsite Borg repository
+  ansible.builtin.command:
+    cmd: >-
+      borg init
+      --encryption repokey-blake2
+      {{ backup_offsite }}
+  environment:
+    BORG_PASSPHRASE: "{{ backup_encryption_passphrase }}"
+    BORG_RSH: "ssh -i {{ backup_ssh_key_path }} -o StrictHostKeyChecking=yes"
+  when:
+    - backup_offsite is defined and backup_offsite | length > 0
+    - _borg_offsite_info.rc != 0
+  register: _borg_offsite_init
+  changed_when: _borg_offsite_init.rc == 0
+  tags: [backup, repo, offsite, init]
+
+# -------------------------------------------------------------------
+# 9. Deploy borgmatic configuration from template
+# -------------------------------------------------------------------
+- name: Deploy borgmatic config.yaml
+  ansible.builtin.template:
+    src: borgmatic-config.yaml.j2
+    dest: "{{ backup_borgmatic_config_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [backup, config]
+
+# -------------------------------------------------------------------
+# 10. Deploy borgmatic systemd service and timer (daily at 03:00 CEST)
+# -------------------------------------------------------------------
+- name: Deploy borgmatic systemd service unit
+  ansible.builtin.template:
+    src: borgmatic.service.j2
+    dest: /etc/systemd/system/borgmatic.service
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [backup, systemd, service]
+
+- name: Deploy borgmatic systemd timer unit
+  ansible.builtin.template:
+    src: borgmatic.timer.j2
+    dest: /etc/systemd/system/borgmatic.timer
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [backup, systemd, timer]
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  tags: [backup, systemd]
+
+- name: Enable and start borgmatic timer
+  ansible.builtin.systemd:
+    name: borgmatic.timer
+    state: started
+    enabled: true
+  tags: [backup, systemd, timer]
+
+# -------------------------------------------------------------------
+# 11. Run initial backup (idempotent — only if no archives exist)
+# -------------------------------------------------------------------
+- name: Check if any Borg archives exist in local repo
+  ansible.builtin.command:
+    cmd: "borg list --short {{ backup_target }}"
+  environment:
+    BORG_PASSPHRASE: "{{ backup_encryption_passphrase }}"
+  register: _borg_list_local
+  changed_when: false
+  failed_when: false
+  tags: [backup, initial]
+
+- name: Run initial borgmatic backup (local only)
+  ansible.builtin.command:
+    cmd: borgmatic --config {{ backup_borgmatic_config_file }} --verbosity 1
+  environment:
+    BORG_PASSPHRASE: "{{ backup_encryption_passphrase }}"
+    BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK: "yes"
+  when: _borg_list_local.stdout | trim | length == 0
+  register: _borg_initial_backup
+  changed_when: _borg_initial_backup.rc == 0
+  tags: [backup, initial]
+
+# -------------------------------------------------------------------
+# 12. Verify backup completed successfully
+# -------------------------------------------------------------------
+- name: Verify Borg repository integrity
+  ansible.builtin.command:
+    cmd: "borg info {{ backup_target }}"
+  environment:
+    BORG_PASSPHRASE: "{{ backup_encryption_passphrase }}"
+  register: _borg_verify
+  changed_when: false
+  failed_when: _borg_verify.rc != 0
+  tags: [backup, verify]
+
+- name: Display backup repository summary
+  ansible.builtin.debug:
+    msg:
+      - "Borg repository: {{ backup_target }}"
+      - "{{ _borg_verify.stdout_lines }}"
+  tags: [backup, verify]

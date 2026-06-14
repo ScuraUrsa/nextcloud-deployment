@@ -1,0 +1,486 @@
+---
+# tasks/main.yml — Keycloak 26 deployment via Docker with PostgreSQL backend
+# All tasks are idempotent: checks existence before creating resources
+
+# -------------------------------------------------------------------
+# 1. Install Docker from Ubuntu repos
+# -------------------------------------------------------------------
+- name: Install docker.io package
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+    update_cache: true
+  tags: [keycloak, docker, packages]
+
+- name: Ensure Docker service is running and enabled
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+  tags: [keycloak, docker, service]
+
+# -------------------------------------------------------------------
+# 2. Install pip dependencies for Docker and PostgreSQL Ansible modules
+# -------------------------------------------------------------------
+- name: Install Python dependencies for Ansible Docker and PostgreSQL modules
+  ansible.builtin.pip:
+    name:
+      - docker
+      - psycopg2-binary
+    state: present
+  tags: [keycloak, packages]
+
+# -------------------------------------------------------------------
+# 3. Create Keycloak PostgreSQL database and user
+#    (reuses the postgresql role's DB server on localhost)
+# -------------------------------------------------------------------
+- name: Create Keycloak database user in PostgreSQL
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ keycloak_db_user }}"
+    password: "{{ keycloak_db_pass }}"
+    encrypted: true
+    state: present
+  no_log: true
+  tags: [keycloak, database, user]
+
+- name: Create Keycloak database
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ keycloak_db_name }}"
+    owner: "{{ keycloak_db_user }}"
+    encoding: UTF8
+    lc_collate: en_US.UTF-8
+    lc_ctype: en_US.UTF-8
+    state: present
+  tags: [keycloak, database]
+
+- name: Grant all privileges on Keycloak database to Keycloak user
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    database: "{{ keycloak_db_name }}"
+    privs: ALL
+    type: database
+    objs: "{{ keycloak_db_name }}"
+    role: "{{ keycloak_db_user }}"
+    state: present
+  tags: [keycloak, database, privileges]
+
+# -------------------------------------------------------------------
+# 4. Pull Keycloak Docker image
+# -------------------------------------------------------------------
+- name: Pull Keycloak Docker image
+  community.docker.docker_image:
+    name: "{{ keycloak_image }}"
+    source: pull
+    force_source: false
+  tags: [keycloak, docker, image]
+
+# -------------------------------------------------------------------
+# 5. Create Docker volume for Keycloak persistent data
+# -------------------------------------------------------------------
+- name: Create Docker volume for Keycloak data
+  community.docker.docker_volume:
+    name: "{{ keycloak_volume }}"
+    state: present
+  tags: [keycloak, docker, volume]
+
+# -------------------------------------------------------------------
+# 6. Start Keycloak container
+# -------------------------------------------------------------------
+- name: Start Keycloak container with PostgreSQL backend
+  community.docker.docker_container:
+    name: "{{ keycloak_container_name }}"
+    image: "{{ keycloak_image }}"
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ keycloak_port }}:8443"
+    volumes:
+      - "{{ keycloak_volume }}:/opt/keycloak/data"
+    env:
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://{{ keycloak_db_host }}:{{ keycloak_db_port }}/{{ keycloak_db_name }}"
+      KC_DB_USERNAME: "{{ keycloak_db_user }}"
+      KC_DB_PASSWORD: "{{ keycloak_db_pass }}"
+      KEYCLOAK_ADMIN: "{{ keycloak_admin_user }}"
+      KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_pass }}"
+      KC_HOSTNAME: "{{ keycloak_domain }}"
+      KC_PROXY: edge
+      KC_HTTP_ENABLED: "false"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -k https://localhost:8443/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+  no_log: false
+  tags: [keycloak, docker, container]
+
+# -------------------------------------------------------------------
+# 7. Wait for Keycloak health endpoint to respond
+# -------------------------------------------------------------------
+- name: Wait for Keycloak health endpoint
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/health/ready"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: _kc_health
+  until: _kc_health.status == 200
+  retries: "{{ keycloak_health_retries }}"
+  delay: "{{ keycloak_health_delay }}"
+  changed_when: false
+  tags: [keycloak, health, validate]
+
+# -------------------------------------------------------------------
+# 8. Obtain admin access token from Keycloak master realm
+# -------------------------------------------------------------------
+- name: Obtain Keycloak admin access token
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: admin-cli
+      username: "{{ keycloak_admin_user }}"
+      password: "{{ keycloak_admin_pass }}"
+      grant_type: password
+    validate_certs: false
+    status_code: 200
+  register: _kc_token
+  changed_when: false
+  no_log: true
+  tags: [keycloak, api, token]
+
+# -------------------------------------------------------------------
+# 9. Check if Nextcloud realm already exists
+# -------------------------------------------------------------------
+- name: Check if Nextcloud realm exists
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: [200, 404]
+  register: _kc_realm_check
+  changed_when: false
+  tags: [keycloak, api, realm]
+
+# -------------------------------------------------------------------
+# 10. Create Nextcloud realm (idempotent — only if not found)
+# -------------------------------------------------------------------
+- name: Create Nextcloud realm
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body: "{{ lookup('template', 'realm-config.json.j2') }}"
+    validate_certs: false
+    status_code: 201
+  when: _kc_realm_check.status == 404
+  register: _kc_realm_create
+  changed_when: true
+  tags: [keycloak, api, realm]
+
+# -------------------------------------------------------------------
+# 11. Create SAML client in Nextcloud realm
+# -------------------------------------------------------------------
+- name: Check if SAML client exists
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients?clientId={{ keycloak_saml_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _kc_saml_check
+  changed_when: false
+  tags: [keycloak, api, saml]
+
+- name: Create SAML client for Nextcloud
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      clientId: "{{ keycloak_saml_client_id }}"
+      name: "Nextcloud SAML"
+      description: "SAML 2.0 client for Nextcloud SSO"
+      protocol: saml
+      enabled: true
+      publicClient: false
+      bearerOnly: false
+      frontchannelLogout: true
+      attributes:
+        saml.assertion.signature: "true"
+        saml.authnstatement: "true"
+        saml.client.signature: "true"
+        saml.force.post.binding: "true"
+        saml.server.signature: "true"
+        saml.signature.algorithm: "RSA_SHA256"
+        saml_name_id_format: "username"
+        saml_force_name_id_format: "true"
+      redirectUris:
+        - "https://{{ keycloak_domain }}/apps/user_saml/saml/acs"
+      baseUrl: "https://{{ keycloak_domain }}"
+      adminUrl: "https://{{ keycloak_domain }}/apps/user_saml/saml/metadata"
+    validate_certs: false
+    status_code: 201
+  when: _kc_saml_check.json | length == 0
+  register: _kc_saml_create
+  changed_when: true
+  tags: [keycloak, api, saml]
+
+# -------------------------------------------------------------------
+# 12. Create OIDC client in Nextcloud realm
+# -------------------------------------------------------------------
+- name: Check if OIDC client exists
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients?clientId={{ keycloak_oidc_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _kc_oidc_check
+  changed_when: false
+  tags: [keycloak, api, oidc]
+
+- name: Create OIDC client for Nextcloud
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      clientId: "{{ keycloak_oidc_client_id }}"
+      name: "Nextcloud OpenID Connect"
+      description: "OpenID Connect client for Nextcloud SSO"
+      protocol: openid-connect
+      enabled: true
+      publicClient: false
+      bearerOnly: false
+      standardFlowEnabled: true
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: true
+      serviceAccountsEnabled: false
+      frontchannelLogout: true
+      attributes:
+        oidc.ciba.grant.enabled: "false"
+        oauth2.device.authorization.grant.enabled: "false"
+        backchannel.logout.session.required: "true"
+        backchannel.logout.revoke.offline.tokens: "false"
+      redirectUris:
+        - "https://{{ keycloak_domain }}/apps/oidc_login/oidc"
+      baseUrl: "https://{{ keycloak_domain }}"
+      adminUrl: ""
+    validate_certs: false
+    status_code: 201
+  when: _kc_oidc_check.json | length == 0
+  register: _kc_oidc_create
+  changed_when: true
+  tags: [keycloak, api, oidc]
+
+# -------------------------------------------------------------------
+# 13. Create tier groups in Nextcloud realm
+# -------------------------------------------------------------------
+- name: Create tier groups (nc-basic, nc-pro, nc-enterprise, nc-admin)
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/groups"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: "{{ item }}"
+    validate_certs: false
+    status_code: [201, 409]
+  loop: "{{ keycloak_groups }}"
+  register: _kc_groups_create
+  changed_when: _kc_groups_create.status == 201
+  failed_when: _kc_groups_create.status not in [201, 409]
+  tags: [keycloak, api, groups]
+
+# -------------------------------------------------------------------
+# 14. Look up SAML client internal ID for mapper configuration
+# -------------------------------------------------------------------
+- name: Get SAML client internal ID
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients?clientId={{ keycloak_saml_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _kc_saml_client_info
+  changed_when: false
+  tags: [keycloak, api, saml, mapper]
+
+- name: Set SAML client internal ID fact
+  ansible.builtin.set_fact:
+    kc_saml_client_uuid: "{{ _kc_saml_client_info.json[0].id }}"
+  when: _kc_saml_client_info.json | length > 0
+  tags: [keycloak, api, saml, mapper]
+
+# -------------------------------------------------------------------
+# 15. Look up OIDC client internal ID for mapper configuration
+# -------------------------------------------------------------------
+- name: Get OIDC client internal ID
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients?clientId={{ keycloak_oidc_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _kc_oidc_client_info
+  changed_when: false
+  tags: [keycloak, api, oidc, mapper]
+
+- name: Set OIDC client internal ID fact
+  ansible.builtin.set_fact:
+    kc_oidc_client_uuid: "{{ _kc_oidc_client_info.json[0].id }}"
+  when: _kc_oidc_client_info.json | length > 0
+  tags: [keycloak, api, oidc, mapper]
+
+# -------------------------------------------------------------------
+# 16. Configure group membership mapper for SAML client
+# -------------------------------------------------------------------
+- name: Check if SAML group mapper exists
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients/{{ kc_saml_client_uuid }}/protocol-mappers/models"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _kc_saml_mappers
+  changed_when: false
+  when: kc_saml_client_uuid is defined
+  tags: [keycloak, api, saml, mapper]
+
+- name: Create SAML group membership mapper
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients/{{ kc_saml_client_uuid }}/protocol-mappers/models"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: "group-membership"
+      protocol: saml
+      protocolMapper: "saml-group-membership-mapper"
+      consentRequired: false
+      config:
+        "single": "false"
+        "attribute.nameformat": "Basic"
+        "attribute.name": "groups"
+        "full.path": "false"
+    validate_certs: false
+    status_code: 201
+  when:
+    - kc_saml_client_uuid is defined
+    - _kc_saml_mappers.json | selectattr('name', 'equalto', 'group-membership') | list | length == 0
+  register: _kc_saml_mapper_create
+  changed_when: true
+  tags: [keycloak, api, saml, mapper]
+
+# -------------------------------------------------------------------
+# 17. Configure group membership mapper for OIDC client
+# -------------------------------------------------------------------
+- name: Check if OIDC group mapper exists
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients/{{ kc_oidc_client_uuid }}/protocol-mappers/models"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+    validate_certs: false
+    status_code: 200
+  register: _kc_oidc_mappers
+  changed_when: false
+  when: kc_oidc_client_uuid is defined
+  tags: [keycloak, api, oidc, mapper]
+
+- name: Create OIDC group membership mapper
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/clients/{{ kc_oidc_client_uuid }}/protocol-mappers/models"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: "group-membership"
+      protocol: openid-connect
+      protocolMapper: "oidc-group-membership-mapper"
+      consentRequired: false
+      config:
+        "full.path": "false"
+        "id.token.claim": "true"
+        "access.token.claim": "true"
+        "userinfo.token.claim": "true"
+        "claim.name": "groups"
+    validate_certs: false
+    status_code: 201
+  when:
+    - kc_oidc_client_uuid is defined
+    - _kc_oidc_mappers.json | selectattr('name', 'equalto', 'group-membership') | list | length == 0
+  register: _kc_oidc_mapper_create
+  changed_when: true
+  tags: [keycloak, api, oidc, mapper]
+
+# -------------------------------------------------------------------
+# 18. Export realm configuration for backup
+# -------------------------------------------------------------------
+- name: Create backup directory for realm exports
+  ansible.builtin.file:
+    path: /opt/keycloak-backups
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [keycloak, backup]
+
+- name: Export Nextcloud realm configuration for backup
+  ansible.builtin.uri:
+    url: "https://localhost:{{ keycloak_port }}/admin/realms/{{ keycloak_realm }}/export"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _kc_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      exportClients: true
+      exportGroupsAndRoles: true
+    validate_certs: false
+    status_code: 200
+  register: _kc_realm_export
+  changed_when: false
+  tags: [keycloak, api, backup]
+
+- name: Save realm export to backup file
+  ansible.builtin.copy:
+    content: "{{ _kc_realm_export.json | to_nice_json }}"
+    dest: "/opt/keycloak-backups/{{ keycloak_realm }}-realm-{{ ansible_date_time.epoch }}.json"
+    owner: root
+    group: root
+    mode: "0640"
+  changed_when: true
+  tags: [keycloak, backup]

@@ -1,0 +1,130 @@
+# {{ ansible_managed | default('Managed by Ansible') }}
+# Alerting rules for Nextcloud stack monitoring
+
+groups:
+  - name: nextcloud_infrastructure
+    rules:
+      # -------------------------------------------------------------------
+      # Disk space alerts
+      # -------------------------------------------------------------------
+      - alert: DiskSpaceWarning
+        expr: |
+          (node_filesystem_avail_bytes{fstype!="tmpfs",fstype!="squashfs",fstype!="overlay"} 
+           / node_filesystem_size_bytes{fstype!="tmpfs",fstype!="squashfs",fstype!="overlay"}) * 100 < {{ 100 - monitoring_alerts_disk_warning }}
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Disk space usage above {{ monitoring_alerts_disk_warning }}% on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} has {{ '{{' }} $value | humanize {{ '}}' }}% free space remaining."
+
+      - alert: DiskSpaceCritical
+        expr: |
+          (node_filesystem_avail_bytes{fstype!="tmpfs",fstype!="squashfs",fstype!="overlay"} 
+           / node_filesystem_size_bytes{fstype!="tmpfs",fstype!="squashfs",fstype!="overlay"}) * 100 < {{ 100 - monitoring_alerts_disk_critical }}
+        for: 5m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "Disk space usage above {{ monitoring_alerts_disk_critical }}% on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} has only {{ '{{' }} $value | humanize {{ '}}' }}% free space remaining. Immediate action required."
+
+      # -------------------------------------------------------------------
+      # Failed login alerts (Nextcloud)
+      # -------------------------------------------------------------------
+      - alert: NextcloudFailedLogins
+        expr: |
+          rate(nextcloud_failed_logins_total[5m]) > {{ monitoring_alerts_failed_logins }}
+        for: 5m
+        labels:
+          severity: warning
+          component: nextcloud
+        annotations:
+          summary: "High rate of failed Nextcloud logins"
+          description: "Nextcloud is seeing {{ '{{' }} $value | humanize {{ '}}' }} failed logins per second over the last 5 minutes. Possible brute-force attack."
+
+      # -------------------------------------------------------------------
+      # TLS certificate expiry alert
+      # -------------------------------------------------------------------
+      - alert: CertificateExpiringSoon
+        expr: |
+          probe_ssl_earliest_cert_expiry{job="blackbox"} - time() < {{ monitoring_alerts_cert_expiry_days * 86400 }}
+        for: 1h
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "TLS certificate expiring within {{ monitoring_alerts_cert_expiry_days }} days"
+          description: "The TLS certificate for {{ '{{' }} $labels.instance {{ '}}' }} will expire in less than {{ monitoring_alerts_cert_expiry_days }} days."
+
+      # -------------------------------------------------------------------
+      # Backup age alert
+      # -------------------------------------------------------------------
+      - alert: BackupTooOld
+        expr: |
+          time() - nextcloud_last_backup_timestamp_seconds > {{ monitoring_alerts_backup_age_hours * 3600 }}
+        for: 1h
+        labels:
+          severity: warning
+          component: backup
+        annotations:
+          summary: "Nextcloud backup is older than {{ monitoring_alerts_backup_age_hours }} hours"
+          description: "The last Nextcloud backup was taken more than {{ monitoring_alerts_backup_age_hours }} hours ago."
+
+      # -------------------------------------------------------------------
+      # Service down alerts
+      # -------------------------------------------------------------------
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Service {{ '{{' }} $labels.job {{ '}}' }} is down on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "The {{ '{{' }} $labels.job {{ '}}' }} exporter has been down for more than 2 minutes."
+
+      # -------------------------------------------------------------------
+      # PostgreSQL connection pool exhaustion
+      # -------------------------------------------------------------------
+      - alert: PostgresConnectionPoolExhausted
+        expr: |
+          pg_stat_database_numbackends{datname="{{ postgresql_db }}"} 
+          / {{ postgresql_max_connections }} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: postgresql
+        annotations:
+          summary: "PostgreSQL connection pool > 80% on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "PostgreSQL database {{ '{{' }} $labels.datname {{ '}}' }} is using {{ '{{' }} $value | humanizePercentage {{ '}}' }} of max connections."
+
+      # -------------------------------------------------------------------
+      # Redis memory usage alert
+      # -------------------------------------------------------------------
+      - alert: RedisMemoryHigh
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis memory usage > 85% on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "Redis is using {{ '{{' }} $value | humanizePercentage {{ '}}' }} of its configured maxmemory."
+
+      # -------------------------------------------------------------------
+      # High system load
+      # -------------------------------------------------------------------
+      - alert: HighSystemLoad
+        expr: |
+          node_load15 / count without(cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High system load on {{ '{{' }} $labels.instance {{ '}}' }}"
+          description: "15-minute load average is {{ '{{' }} $value {{ '}}' }}, exceeding 2x CPU count."

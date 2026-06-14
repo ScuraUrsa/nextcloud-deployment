@@ -1,0 +1,288 @@
+---
+# tasks/configure.yml — Deploy config.php, run occ maintenance:install
+# Configure trusted domains, Redis, background jobs, etc.
+
+# -------------------------------------------------------------------
+# 1. Deploy config.php from Jinja2 template
+# -------------------------------------------------------------------
+- name: Deploy Nextcloud config.php
+  ansible.builtin.template:
+    src: config.php.j2
+    dest: "{{ nextcloud_web_root }}/config/config.php"
+    owner: "www-data"
+    group: "www-data"
+    mode: "0640"
+  register: _nc_config
+  changed_when: "_nc_config.changed"
+  failed_when:
+    - _nc_config is failed
+    - _nc_config.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 2. Check if Nextcloud is already installed
+# -------------------------------------------------------------------
+- name: Check if Nextcloud is already installed
+  ansible.builtin.command:
+    cmd: "php occ status --no-warnings"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_status
+  changed_when: false
+  failed_when: false
+
+# -------------------------------------------------------------------
+# 3. Run occ maintenance:install (only if not installed)
+# -------------------------------------------------------------------
+- name: Run Nextcloud maintenance:install
+  ansible.builtin.command:
+    cmd: >-
+      php occ maintenance:install
+      --database="{{ nextcloud_db_type }}"
+      --database-name="{{ nextcloud_db_name }}"
+      --database-user="{{ nextcloud_db_user }}"
+      --database-pass="{{ nextcloud_db_password }}"
+      --database-host="{{ nextcloud_db_host }}"
+      --admin-user="{{ nextcloud_admin_user }}"
+      --admin-pass="{{ nextcloud_admin_pass }}"
+      --data-dir="{{ nextcloud_data_dir }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_install
+  changed_when: "_nc_install.rc == 0"
+  failed_when:
+    - _nc_install is failed
+    - _nc_install.rc | default(1) != 0
+    - "'already installed' not in _nc_install.stderr | default('')"
+  no_log: true
+  when: _nc_status.rc != 0
+
+# -------------------------------------------------------------------
+# 4. Set trusted domains via occ
+# -------------------------------------------------------------------
+- name: Configure trusted domains via occ
+  ansible.builtin.command:
+    cmd: "php occ config:system:set trusted_domains {{ idx }} --value={{ item }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop: "{{ nextcloud_trusted_domains }}"
+  loop_control:
+    index_var: idx
+  register: _nc_trusted
+  changed_when: "_nc_trusted.rc == 0"
+  failed_when:
+    - _nc_trusted is failed
+    - _nc_trusted.rc | default(1) != 0
+    - "'already exists' not in _nc_trusted.stderr | default('')"
+
+# -------------------------------------------------------------------
+# 5. Set overwrite protocol to https
+# -------------------------------------------------------------------
+- name: Set overwrite protocol to https
+  ansible.builtin.command:
+    cmd: "php occ config:system:set overwriteprotocol --value={{ nextcloud_overwrite_protocol }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_proto
+  changed_when: "_nc_proto.rc == 0"
+  failed_when:
+    - _nc_proto is failed
+    - _nc_proto.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 6. Set default phone region
+# -------------------------------------------------------------------
+- name: Set default phone region
+  ansible.builtin.command:
+    cmd: "php occ config:system:set default_phone_region --value={{ nextcloud_default_phone_region }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_region
+  changed_when: "_nc_region.rc == 0"
+  failed_when:
+    - _nc_region is failed
+    - _nc_region.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 7. Configure Redis for caching, locking, file locking
+# -------------------------------------------------------------------
+- name: Set Redis configuration for memcache.distributed
+  ansible.builtin.command:
+    cmd: "php occ config:system:set memcache.distributed --value='\\OC\\Memcache\\Redis'"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_redis_dist
+  changed_when: "_nc_redis_dist.rc == 0"
+  failed_when:
+    - _nc_redis_dist is failed
+    - _nc_redis_dist.rc | default(1) != 0
+
+- name: Set Redis configuration for memcache.locking
+  ansible.builtin.command:
+    cmd: "php occ config:system:set memcache.locking --value='\\OC\\Memcache\\Redis'"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_redis_lock
+  changed_when: "_nc_redis_lock.rc == 0"
+  failed_when:
+    - _nc_redis_lock is failed
+    - _nc_redis_lock.rc | default(1) != 0
+
+- name: Set Redis session handler
+  ansible.builtin.command:
+    cmd: "php occ config:system:set redis.session_handler --value=true --type=boolean"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_redis_sess
+  changed_when: "_nc_redis_sess.rc == 0"
+  failed_when:
+    - _nc_redis_sess is failed
+    - _nc_redis_sess.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 8. Set background jobs mode to cron
+# -------------------------------------------------------------------
+- name: Set background jobs mode to cron
+  ansible.builtin.command:
+    cmd: "php occ background:cron"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_bg
+  changed_when: "_nc_bg.rc == 0"
+  failed_when:
+    - _nc_bg is failed
+    - _nc_bg.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 9. Set maintenance window start
+# -------------------------------------------------------------------
+- name: Set maintenance window start hour
+  ansible.builtin.command:
+    cmd: "php occ config:system:set maintenance_window_start --value={{ nextcloud_maintenance_window_start }} --type=integer"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_maint
+  changed_when: "_nc_maint.rc == 0"
+  failed_when:
+    - _nc_maint is failed
+    - _nc_maint.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 10. Set default quota
+# -------------------------------------------------------------------
+- name: Set default quota for new users
+  ansible.builtin.command:
+    cmd: "php occ config:app:set files default_quota --value='{{ nextcloud_default_quota }}'"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_quota
+  changed_when: "_nc_quota.rc == 0"
+  failed_when:
+    - _nc_quota is failed
+    - _nc_quota.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 11. Configure mail settings
+# -------------------------------------------------------------------
+- name: Configure SMTP mail settings
+  ansible.builtin.command:
+    cmd: "php occ config:system:set {{ item.key }} --value='{{ item.value }}'{% if item.type is defined %} --type={{ item.type }}{% endif %}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop:
+    - { key: "mail_smtpmode", value: "{{ nextcloud_mail_smtp_mode }}" }
+    - { key: "mail_smtphost", value: "{{ nextcloud_mail_smtp_host }}" }
+    - { key: "mail_smtpport", value: "{{ nextcloud_mail_smtp_port }}", type: "integer" }
+    - { key: "mail_smtpsecure", value: "{{ nextcloud_mail_smtp_secure }}" }
+    - { key: "mail_smtpauth", value: "{{ nextcloud_mail_smtp_auth | lower }}", type: "boolean" }
+    - { key: "mail_from_address", value: "{{ nextcloud_mail_from_address }}" }
+    - { key: "mail_domain", value: "{{ nextcloud_mail_domain }}" }
+  register: _nc_mail
+  changed_when: "_nc_mail.rc == 0"
+  failed_when:
+    - _nc_mail is failed
+    - _nc_mail.rc | default(1) != 0
+  when: nextcloud_mail_smtp_mode != ""
+
+# -------------------------------------------------------------------
+# 12. Run occ db:add-missing-indices
+# -------------------------------------------------------------------
+- name: Add missing database indices
+  ansible.builtin.command:
+    cmd: "php occ db:add-missing-indices --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_indices
+  changed_when: "'added' in _nc_indices.stdout | default('')"
+  failed_when:
+    - _nc_indices is failed
+    - _nc_indices.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 13. Run occ db:add-missing-primary-keys
+# -------------------------------------------------------------------
+- name: Add missing primary keys
+  ansible.builtin.command:
+    cmd: "php occ db:add-missing-primary-keys --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_pkeys
+  changed_when: "'added' in _nc_pkeys.stdout | default('')"
+  failed_when:
+    - _nc_pkeys is failed
+    - _nc_pkeys.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 14. Run occ db:convert-filecache-bigint (idempotent)
+# -------------------------------------------------------------------
+- name: Convert filecache to bigint (if needed)
+  ansible.builtin.command:
+    cmd: "php occ db:convert-filecache-bigint --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_bigint
+  changed_when: "'converted' in _nc_bigint.stdout | default('')"
+  failed_when:
+    - _nc_bigint is failed
+    - _nc_bigint.rc | default(1) != 0
+
+# -------------------------------------------------------------------
+# 15. Enable pretty URLs (requires mod_rewrite / nginx rewrite)
+# -------------------------------------------------------------------
+- name: Enable pretty URLs
+  ansible.builtin.command:
+    cmd: "php occ config:system:set htaccess.RewriteBase --value='/'"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_rewrite
+  changed_when: "_nc_rewrite.rc == 0"
+  failed_when:
+    - _nc_rewrite is failed
+    - _nc_rewrite.rc | default(1) != 0
+
+- name: Update .htaccess for pretty URLs
+  ansible.builtin.command:
+    cmd: "php occ maintenance:update:htaccess --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_htaccess
+  changed_when: "_nc_htaccess.rc == 0"
+  failed_when:
+    - _nc_htaccess is failed
+    - _nc_htaccess.rc | default(1) != 0

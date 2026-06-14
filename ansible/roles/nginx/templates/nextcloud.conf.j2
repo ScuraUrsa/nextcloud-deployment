@@ -1,0 +1,175 @@
+# {{ ansible_managed }}
+# Nginx site configuration for Nextcloud
+# Reverse proxy with TLS 1.3, HTTP/2, security headers, rate limiting
+
+# ---- Rate Limiting Zone ----
+limit_req_zone $binary_remote_addr zone=nextcloud_limit:{{ nginx_rate_limit_zone_size }} rate={{ nginx_rate_limit_requests }};
+
+# ---- Upstream: PHP-FPM ----
+upstream php-handler {
+    server {{ nginx_php_handler }};
+}
+
+# ---- HTTP → HTTPS Redirect ----
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ nginx_server_name }};
+
+    # Let's Encrypt ACME challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    # Redirect everything else to HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---- HTTPS Server Block ----
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ nginx_server_name }};
+
+    # ---- SSL/TLS Configuration ----
+    ssl_certificate     {{ nginx_ssl_certificate }};
+    ssl_certificate_key {{ nginx_ssl_certificate_key }};
+
+    ssl_protocols {{ nginx_ssl_protocols }};
+    ssl_ciphers {{ nginx_ssl_ciphers }};
+    ssl_prefer_server_ciphers on;
+
+    ssl_session_cache   {{ nginx_ssl_session_cache }};
+    ssl_session_timeout {{ nginx_ssl_session_timeout }};
+    ssl_session_tickets {{ nginx_ssl_session_tickets }};
+
+    ssl_stapling {{ nginx_ssl_stapling }};
+    ssl_stapling_verify {{ nginx_ssl_stapling_verify }};
+    resolver {{ nginx_resolver }} valid=300s;
+    resolver_timeout {{ nginx_resolver_timeout }};
+
+    ssl_dhparam {{ nginx_ssl_dhparam }};
+
+    # ---- Security Headers ----
+    # HSTS (HTTP Strict Transport Security)
+    add_header Strict-Transport-Security "max-age={{ nginx_hsts_max_age }}{% if nginx_hsts_include_subdomains %}; includeSubDomains{% endif %}{% if nginx_hsts_preload %}; preload{% endif %}" always;
+
+    # Prevent MIME type sniffing
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Prevent clickjacking (Nextcloud uses same-origin for its own framing needs)
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    # Referrer policy
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Permissions policy — restrict browser features
+    add_header Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), fullscreen=(self), display-capture=(self)" always;
+
+    # NOTE: Do NOT set Content-Security-Policy here.
+    # Nextcloud sets its own CSP via PHP headers.
+
+    # ---- Rate Limiting ----
+    limit_req zone=nextcloud_limit burst={{ nginx_rate_limit_burst }} nodelay;
+    limit_req_status 429;
+
+    # ---- Basic Settings ----
+    client_max_body_size {{ nginx_client_max_body_size }};
+    client_body_timeout 300s;
+    fastcgi_buffers 64 4K;
+
+    # ---- Gzip Compression ----
+    gzip {{ nginx_gzip }};
+    gzip_vary {{ nginx_gzip_vary }};
+    gzip_proxied {{ nginx_gzip_proxied }};
+    gzip_comp_level {{ nginx_gzip_comp_level }};
+    gzip_types {{ nginx_gzip_types }};
+    gzip_disable "msie6";
+
+    # ---- Nextcloud Root ----
+    root /var/www/nextcloud;
+
+    # ---- .well-known Redirects (Nextcloud standard) ----
+    location = /.well-known/carddav {
+        return 301 $scheme://$host/remote.php/dav;
+    }
+    location = /.well-known/caldav {
+        return 301 $scheme://$host/remote.php/dav;
+    }
+    location = /.well-known/webfinger {
+        return 301 $scheme://$host/index.php/.well-known/webfinger;
+    }
+    location = /.well-known/nodeinfo {
+        return 301 $scheme://$host/index.php/.well-known/nodeinfo;
+    }
+
+    # ---- Let's Encrypt ACME Challenge ----
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+        default_type text/plain;
+    }
+
+    # ---- Static File Caching ----
+    # Assets with aggressive caching (versioned filenames)
+    location ~* \.(?:css|js|woff2?|svg|gif|png|jpg|jpeg|ico|webp|avif)$ {
+        try_files $uri /index.php$request_uri;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+
+    # Nextcloud-specific static paths
+    location ~* ^/(?:oc[ms]-provider|ocm-provider|ocs-provider)/ {
+        try_files $uri $uri/ /index.php$request_uri;
+        expires 1h;
+        add_header Cache-Control "public";
+        access_log off;
+    }
+
+    # ---- Nextcloud Pretty URLs ----
+    # The main rewrite rule: everything goes to index.php
+    location / {
+        try_files $uri $uri/ /index.php$request_uri;
+    }
+
+    # ---- PHP Processing ----
+    location ~ ^/(?:index|remote|public|cron|core/ajax/update|status|ocs/v[12]|updater/.+|oc[ms]-provider/.+|.+/richdocumentscode(_arm64)?/proxy)\.php(?:$|/) {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        set $path_info $fastcgi_path_info;
+
+        try_files $fastcgi_script_name =404;
+
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $path_info;
+        fastcgi_param HTTPS on;
+
+        # Avoid sending security headers twice (PHP sets some)
+        fastcgi_param modHeadersAvailable true;
+        fastcgi_param front_controller_active true;
+
+        fastcgi_pass php-handler;
+        fastcgi_intercept_errors on;
+        fastcgi_request_buffering off;
+
+        fastcgi_read_timeout 600s;
+        fastcgi_send_timeout 600s;
+        fastcgi_connect_timeout 60s;
+
+        fastcgi_max_temp_file_size 0;
+    }
+
+    # ---- Deny Access to Hidden / Sensitive Files ----
+    location ~* ^/(?:\.|build|tests|config|lib|3rdparty|templates|data|README|autotest|occ|issue|indie|db_|console) {
+        deny all;
+        return 404;
+    }
+
+    # ---- Deny Access to Data Directory ----
+    location ~* ^/data/ {
+        deny all;
+        return 404;
+    }
+}

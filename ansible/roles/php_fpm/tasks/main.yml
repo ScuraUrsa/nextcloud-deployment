@@ -1,0 +1,105 @@
+---
+# tasks/main.yml — PHP 8.3 FPM installation and tuning for Nextcloud
+# All tasks are idempotent with explicit changed_when / failed_when
+
+# -------------------------------------------------------------------
+# 1. Add ppa:ondrej/php repository for latest PHP packages
+# -------------------------------------------------------------------
+- name: Install prerequisites for adding apt repositories
+  ansible.builtin.apt:
+    name:
+      - software-properties-common
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+    state: present
+    install_recommends: false
+  changed_when: false
+  failed_when: false
+
+- name: Add ppa:ondrej/php repository
+  ansible.builtin.apt_repository:
+    repo: "ppa:ondrej/php"
+    state: present
+    update_cache: true
+  register: _php_ppa
+  changed_when: "_php_ppa.changed"
+  failed_when:
+    - _php_ppa is failed
+    - _php_ppa.rc | default(0) != 0
+
+# -------------------------------------------------------------------
+# 2. Install PHP 8.3 and all Nextcloud-required modules
+# -------------------------------------------------------------------
+- name: Install PHP 8.3 and Nextcloud-required modules
+  ansible.builtin.apt:
+    name: "{{ php_modules }}"
+    state: present
+    install_recommends: false
+  register: _php_pkg_install
+  changed_when: "_php_pkg_install.changed"
+  failed_when:
+    - _php_pkg_install is failed
+    - not _php_pkg_install.msg is search("unmet dependencies|held broken packages")
+
+# -------------------------------------------------------------------
+# 3. Configure php.ini for Nextcloud (CLI and FPM)
+# -------------------------------------------------------------------
+- name: Deploy Nextcloud-optimized php.ini overrides (CLI)
+  ansible.builtin.template:
+    src: php.ini.j2
+    dest: "/etc/php/{{ php_version }}/cli/conf.d/99-nextcloud.ini"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _php_cli_ini
+  changed_when: "_php_cli_ini.changed"
+  failed_when:
+    - _php_cli_ini is failed
+    - _php_cli_ini.rc | default(0) != 0
+
+- name: Deploy Nextcloud-optimized php.ini overrides (FPM)
+  ansible.builtin.template:
+    src: php.ini.j2
+    dest: "/etc/php/{{ php_version }}/fpm/conf.d/99-nextcloud.ini"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _php_fpm_ini
+  changed_when: "_php_fpm_ini.changed"
+  failed_when:
+    - _php_fpm_ini is failed
+    - _php_fpm_ini.rc | default(0) != 0
+  notify: "reload php8.3-fpm"
+
+# -------------------------------------------------------------------
+# 4. Configure PHP-FPM pool for Nextcloud
+# -------------------------------------------------------------------
+- name: Deploy PHP-FPM pool configuration (www.conf)
+  ansible.builtin.template:
+    src: www.conf.j2
+    dest: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/php-fpm{{ php_version }} -t -y %s"
+  register: _php_pool_conf
+  changed_when: "_php_pool_conf.changed"
+  failed_when:
+    - _php_pool_conf is failed
+    - _php_pool_conf.rc | default(0) != 0
+  notify: "restart php8.3-fpm"
+
+# -------------------------------------------------------------------
+# 5. Enable and start php8.3-fpm service
+# -------------------------------------------------------------------
+- name: Ensure php8.3-fpm is enabled and running
+  ansible.builtin.systemd:
+    name: php8.3-fpm
+    enabled: true
+    state: started
+  register: _php_fpm_service
+  changed_when: "_php_fpm_service.changed"
+  failed_when:
+    - _php_fpm_service is failed
+    - "'Could not find the requested service' in _php_fpm_service.msg | default('')"

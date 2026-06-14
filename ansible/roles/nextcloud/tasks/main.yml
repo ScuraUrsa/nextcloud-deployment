@@ -1,0 +1,31 @@
+---
+# tasks/main.yml — Nextcloud Core role
+# Imports sub-task files in dependency order
+
+- name: Include install tasks (download, verify, extract)
+  ansible.builtin.include_tasks: install.yml
+  tags: [nextcloud, install]
+
+- name: Include configure tasks (config.php, occ maintenance:install)
+  ansible.builtin.include_tasks: configure.yml
+  tags: [nextcloud, configure]
+
+- name: Include apps tasks (install and enable with tier gating)
+  ansible.builtin.include_tasks: apps.yml
+  tags: [nextcloud, apps]
+
+- name: Include cron tasks (system cron for background jobs)
+  ansible.builtin.include_tasks: cron.yml
+  tags: [nextcloud, cron]
+
+- name: Include groups tasks (create tier groups)
+  ansible.builtin.include_tasks: groups.yml
+  tags: [nextcloud, groups]
+
+- name: Include quotas tasks (set per-group quotas)
+  ansible.builtin.include_tasks: quotas.yml
+  tags: [nextcloud, quotas]
+
+- name: Include upgrade tasks (placeholder for upgrade procedure)
+  ansible.builtin.include_tasks: upgrade.yml
+  tags: [nextcloud, upgrade, never]

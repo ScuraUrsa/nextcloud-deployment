@@ -1,0 +1,14 @@
+---
+# Handlers for the PHP-FPM role
+
+- name: Restart php8.3-fpm
+  ansible.builtin.systemd:
+    name: php8.3-fpm
+    state: restarted
+  listen: "restart php8.3-fpm"
+
+- name: Reload php8.3-fpm
+  ansible.builtin.systemd:
+    name: php8.3-fpm
+    state: reloaded
+  listen: "reload php8.3-fpm"

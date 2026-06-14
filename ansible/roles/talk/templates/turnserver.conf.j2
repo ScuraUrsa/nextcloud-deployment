@@ -1,0 +1,92 @@
+# {{ ansible_managed | default('Managed by Ansible — do not edit manually') }}
+#
+# Coturn TURN/STUN server configuration for Nextcloud Talk
+# Generated from ansible/roles/talk/templates/turnserver.conf.j2
+
+# -------------------------------------------------------------------
+# Listening ports
+# -------------------------------------------------------------------
+# STUN/TURN on standard port (UDP + TCP)
+listening-port={{ turn_port_stun }}
+
+# TURN over TLS (DTLS + TLS)
+tls-listening-port={{ turn_port_tls }}
+
+# Listen on all interfaces (or specific IP)
+listening-ip={{ turn_listening_ip }}
+
+# -------------------------------------------------------------------
+# External IP detection
+# -------------------------------------------------------------------
+# Tell coturn its public-facing IP so it can advertise correct relay candidates
+external-ip={{ turn_external_ip }}
+
+# -------------------------------------------------------------------
+# UDP relay port range
+# -------------------------------------------------------------------
+# Ports used for media relay (must be open in firewall)
+min-port={{ turn_port_udp_min }}
+max-port={{ turn_port_udp_max }}
+
+# -------------------------------------------------------------------
+# Authentication — static auth secret (Nextcloud Talk compatible)
+# -------------------------------------------------------------------
+# Use long-term credential mechanism with a shared static secret.
+# Nextcloud Talk generates ephemeral username/password pairs from this secret.
+use-auth-secret
+static-auth-secret={{ turn_secret }}
+
+# Realm for the long-term credential mechanism
+realm={{ turn_realm }}
+
+# -------------------------------------------------------------------
+# TLS configuration
+# -------------------------------------------------------------------
+# Certificate and private key (reuse Let's Encrypt certs from Nextcloud)
+cert={{ turn_cert_file }}
+pkey={{ turn_pkey_file }}
+
+# Disable insecure TLS versions
+no-tlsv1
+no-tlsv1_1
+
+# Cipher suite (modern, secure)
+cipher-list="ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+
+# -------------------------------------------------------------------
+# Logging
+# -------------------------------------------------------------------
+log-file={{ turn_log_file }}
+# Simple log format (no timestamps — syslog/journald handles that)
+simple-log
+
+# Verbosity: normal (no debug spam)
+verbose
+
+# -------------------------------------------------------------------
+# Performance and security
+# -------------------------------------------------------------------
+# Fingerprint support (helps with NAT/firewall traversal)
+fingerprint
+
+# Mobility with ICE (MICE) support
+mobility
+
+# Deny peer-to-peer relaying (only allow relayed transport)
+no-loopback-peers
+no-multicast-peers
+
+# Total quota for a single session (bytes, 0 = unlimited)
+total-quota=0
+
+# Max allocation time (seconds, default 600)
+max-bps=0
+
+# Stale nonce expiration (seconds)
+stale-nonce=600
+
+# -------------------------------------------------------------------
+# Deny private IP ranges as relay endpoints (security)
+# -------------------------------------------------------------------
+no-rfc5780
+no-stun-backward-compatibility

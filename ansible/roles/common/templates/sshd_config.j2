@@ -1,0 +1,47 @@
+# {{ ansible_managed }}
+# SSH server configuration — hardened by Ansible common role
+
+Include /etc/ssh/sshd_config.d/*.conf
+
+Port {{ common_ssh_port }}
+Protocol 2
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Logging
+SyslogFacility AUTH
+LogLevel INFO
+
+# Authentication
+LoginGraceTime 60
+PermitRootLogin {{ common_ssh_permit_root_login }}
+StrictModes yes
+MaxAuthTries 3
+MaxSessions 10
+
+PubkeyAuthentication yes
+PasswordAuthentication {{ common_ssh_password_authentication }}
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+
+# Idle timeout
+ClientAliveInterval {{ common_ssh_client_alive_interval }}
+ClientAliveCountMax {{ common_ssh_client_alive_count_max }}
+
+# Disable forwarding unless needed
+AllowTcpForwarding no
+X11Forwarding no
+AllowAgentForwarding no
+
+# Sandbox
+UseDNS no
+
+# Ciphers and Kex (modern, secure)
+Ciphers aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-ctr
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+
+# Banner
+Banner /etc/motd

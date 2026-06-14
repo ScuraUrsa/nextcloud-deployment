@@ -1,0 +1,162 @@
+---
+# tasks/apps.yml — Install ALL apps from nextcloud_apps list
+# Enable apps with group-based tier gating
+
+# -------------------------------------------------------------------
+# 1. Install all apps from the nextcloud_apps list
+# -------------------------------------------------------------------
+- name: Install Nextcloud apps via occ
+  ansible.builtin.command:
+    cmd: "php occ app:install {{ item }} --no-interaction"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop: "{{ nextcloud_apps }}"
+  register: _nc_app_install
+  changed_when: "'installed' in _nc_app_install.stdout | default('')"
+  failed_when:
+    - _nc_app_install is failed
+    - _nc_app_install.rc | default(1) != 0
+    - "'already installed' not in _nc_app_install.stdout | default('')"
+    - "'not found' not in _nc_app_install.stderr | default('')"
+  # Continue on app-not-found errors (some apps may be bundled or unavailable)
+  ignore_errors: true
+
+# -------------------------------------------------------------------
+# 2. Enable apps for nc-basic tier (basic + pro + enterprise groups)
+# -------------------------------------------------------------------
+- name: Enable basic-tier apps for nc-basic, nc-pro, nc-enterprise groups
+  ansible.builtin.command:
+    cmd: >-
+      php occ app:enable {{ item }}
+      --groups nc-basic,nc-pro,nc-enterprise
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop: "{{ nextcloud_tiers.basic.apps }}"
+  register: _nc_basic_enable
+  changed_when: "'enabled' in _nc_basic_enable.stdout | default('')"
+  failed_when:
+    - _nc_basic_enable is failed
+    - _nc_basic_enable.rc | default(1) != 0
+    - "'already enabled' not in _nc_basic_enable.stdout | default('')"
+  ignore_errors: true
+
+# -------------------------------------------------------------------
+# 3. Enable pro-tier apps for nc-pro and nc-enterprise groups
+# -------------------------------------------------------------------
+- name: Enable pro-tier apps for nc-pro, nc-enterprise groups
+  ansible.builtin.command:
+    cmd: >-
+      php occ app:enable {{ item }}
+      --groups nc-pro,nc-enterprise
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop: "{{ nextcloud_tiers.pro.apps }}"
+  register: _nc_pro_enable
+  changed_when: "'enabled' in _nc_pro_enable.stdout | default('')"
+  failed_when:
+    - _nc_pro_enable is failed
+    - _nc_pro_enable.rc | default(1) != 0
+    - "'already enabled' not in _nc_pro_enable.stdout | default('')"
+  ignore_errors: true
+
+# -------------------------------------------------------------------
+# 4. Enable enterprise-tier apps for nc-enterprise group only
+# -------------------------------------------------------------------
+- name: Enable enterprise-tier apps for nc-enterprise group
+  ansible.builtin.command:
+    cmd: >-
+      php occ app:enable {{ item }}
+      --groups nc-enterprise
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop: "{{ nextcloud_tiers.enterprise.apps }}"
+  register: _nc_ent_enable
+  changed_when: "'enabled' in _nc_ent_enable.stdout | default('')"
+  failed_when:
+    - _nc_ent_enable is failed
+    - _nc_ent_enable.rc | default(1) != 0
+    - "'already enabled' not in _nc_ent_enable.stdout | default('')"
+  ignore_errors: true
+
+# -------------------------------------------------------------------
+# 5. Enable admin apps for nc-admin group
+# -------------------------------------------------------------------
+- name: Enable admin apps for nc-admin group
+  ansible.builtin.command:
+    cmd: >-
+      php occ app:enable {{ item }}
+      --groups {{ nextcloud_admin_group }}
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop:
+    - impersonate
+    - serverinfo
+    - logreader
+    - support
+    - workflowengine
+    - files_accesscontrol
+    - files_retention
+    - brute_force_settings
+  register: _nc_admin_enable
+  changed_when: "'enabled' in _nc_admin_enable.stdout | default('')"
+  failed_when:
+    - _nc_admin_enable is failed
+    - _nc_admin_enable.rc | default(1) != 0
+    - "'already enabled' not in _nc_admin_enable.stdout | default('')"
+  ignore_errors: true
+
+# -------------------------------------------------------------------
+# 6. Enable globally-available apps (no group restriction)
+# -------------------------------------------------------------------
+- name: Enable globally-available apps (no group restriction)
+  ansible.builtin.command:
+    cmd: "php occ app:enable {{ item }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop:
+    - dashboard
+    - files
+    - files_trashbin
+    - files_versions
+    - firstrunwizard
+    - nextcloud_announcements
+    - notifications
+    - password_policy
+    - privacy
+    - recommendations
+    - settings
+    - sharebymail
+    - support
+    - survey_client
+    - systemtags
+    - theming
+    - twofactor_backupcodes
+    - updatenotification
+    - viewer
+    - activity
+  register: _nc_global_enable
+  changed_when: "'enabled' in _nc_global_enable.stdout | default('')"
+  failed_when:
+    - _nc_global_enable is failed
+    - _nc_global_enable.rc | default(1) != 0
+    - "'already enabled' not in _nc_global_enable.stdout | default('')"
+  ignore_errors: true
+
+# -------------------------------------------------------------------
+# 7. List installed apps for verification
+# -------------------------------------------------------------------
+- name: List installed and enabled apps
+  ansible.builtin.command:
+    cmd: "php occ app:list"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  register: _nc_app_list
+  changed_when: false
+  failed_when: false

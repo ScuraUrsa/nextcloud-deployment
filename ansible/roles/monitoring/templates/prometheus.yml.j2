@@ -1,0 +1,61 @@
+# {{ ansible_managed | default('Managed by Ansible') }}
+# Prometheus configuration — Nextcloud stack monitoring
+
+global:
+  scrape_interval: {{ prometheus_scrape_interval }}
+  evaluation_interval: {{ prometheus_scrape_interval }}
+  external_labels:
+    environment: production
+    role: nextcloud
+
+# Alerting rules
+rule_files:
+  - "{{ prometheus_alert_rules_file }}"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:{{ prometheus_port }}
+
+  # Node exporter — system metrics (CPU, memory, disk, network)
+  - job_name: node
+    static_configs:
+      - targets:
+          - localhost:{{ node_exporter_port }}
+        labels:
+          instance: "{{ inventory_hostname }}"
+
+  # PostgreSQL exporter — database metrics
+  - job_name: postgresql
+    static_configs:
+      - targets:
+          - localhost:{{ postgres_exporter_port }}
+        labels:
+          instance: "{{ inventory_hostname }}"
+          service: postgresql
+
+  # Redis exporter — cache metrics
+  - job_name: redis
+    static_configs:
+      - targets:
+          - localhost:{{ redis_exporter_port }}
+        labels:
+          instance: "{{ inventory_hostname }}"
+          service: redis
+
+  # Nextcloud exporter — application metrics
+  - job_name: nextcloud
+    static_configs:
+      - targets:
+          - localhost:{{ nextcloud_exporter_port }}
+        labels:
+          instance: "{{ inventory_hostname }}"
+          service: nextcloud
+    metric_relabel_configs:
+      # Keep only Nextcloud-specific metrics to reduce cardinality
+      - source_labels: [__name__]
+        regex: "nextcloud_.*"
+        action: keep

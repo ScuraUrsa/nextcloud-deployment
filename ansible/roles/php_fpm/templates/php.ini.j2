@@ -1,0 +1,67 @@
+; {{ ansible_managed }}
+; Nextcloud-optimized PHP 8.3 overrides
+; Deployed by Ansible php_fpm role
+
+; -------------------------------------------------------------------
+; Resource Limits
+; -------------------------------------------------------------------
+memory_limit = {{ php_memory_limit }}
+max_execution_time = {{ php_max_execution_time }}
+max_input_time = {{ php_max_input_time }}
+max_input_vars = 3000
+
+; -------------------------------------------------------------------
+; Upload Limits (Nextcloud handles large files)
+; -------------------------------------------------------------------
+upload_max_filesize = {{ php_upload_max_filesize }}
+post_max_size = {{ php_post_max_size }}
+
+; -------------------------------------------------------------------
+; Security
+; -------------------------------------------------------------------
+expose_php = Off
+disable_functions = {{ php_disabled_functions }}
+
+; -------------------------------------------------------------------
+; Error Handling
+; -------------------------------------------------------------------
+display_errors = Off
+display_startup_errors = Off
+log_errors = On
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+
+; -------------------------------------------------------------------
+; Session
+; -------------------------------------------------------------------
+session.save_handler = files
+session.save_path = "/var/lib/php/sessions"
+session.gc_maxlifetime = 1440
+
+; -------------------------------------------------------------------
+; OPCache — Nextcloud-optimized
+; -------------------------------------------------------------------
+opcache.enable = 1
+opcache.enable_cli = 1
+opcache.memory_consumption = {{ php_opcache_memory }}
+opcache.interned_strings_buffer = 32
+opcache.max_accelerated_files = {{ php_opcache_max_accelerated_files }}
+opcache.revalidate_freq = 60
+opcache.fast_shutdown = 1
+opcache.validate_timestamps = 1
+opcache.save_comments = 1
+opcache.file_update_protection = 2
+
+; -------------------------------------------------------------------
+; APCu — Local object cache for Nextcloud
+; -------------------------------------------------------------------
+apc.enabled = 1
+apc.shm_size = 128M
+apc.ttl = 7200
+apc.gc_ttl = 3600
+apc.enable_cli = 1
+apc.serializer = igbinary
+
+; -------------------------------------------------------------------
+; Date & Timezone
+; -------------------------------------------------------------------
+date.timezone = {{ common_timezone | default('UTC') }}

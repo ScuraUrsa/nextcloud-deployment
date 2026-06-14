@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+# Elasticsearch single-node configuration for Nextcloud full-text search
+
+cluster.name: {{ elasticsearch_cluster_name }}
+node.name: {{ elasticsearch_node_name }}
+
+path.data: /var/lib/elasticsearch
+path.logs: /var/log/elasticsearch
+
+network.host: {{ elasticsearch_network_host }}
+http.port: {{ elasticsearch_http_port }}
+
+discovery.type: {{ elasticsearch_discovery_type }}
+
+# X-Pack security
+xpack.security.enabled: {{ elasticsearch_xpack_security | lower }}
+xpack.security.enrollment.enabled: false
+
+# Disable TLS for localhost-only single-node (Nextcloud connects locally)
+xpack.security.http.ssl.enabled: false
+xpack.security.transport.ssl.enabled: false

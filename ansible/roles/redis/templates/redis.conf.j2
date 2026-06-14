@@ -1,0 +1,57 @@
+# Redis 7 configuration for Nextcloud — caching, locking, sessions
+# Managed by Ansible. Do not edit manually.
+# Generated from template: ansible/roles/redis/templates/redis.conf.j2
+
+# -------------------------------------------------------------------
+# Unix socket only — no TCP listener
+# -------------------------------------------------------------------
+port {{ redis_port }}
+unixsocket {{ redis_socket }}
+unixsocketperm {{ redis_socket_perm }}
+
+# Disable TCP entirely
+bind 127.0.0.1 -::1
+
+# -------------------------------------------------------------------
+# Memory management
+# -------------------------------------------------------------------
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy {{ redis_maxmemory_policy }}
+
+# -------------------------------------------------------------------
+# Persistence (RDB snapshots)
+# -------------------------------------------------------------------
+save {{ redis_save }}
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+dir /var/lib/redis
+
+# -------------------------------------------------------------------
+# General
+# -------------------------------------------------------------------
+databases {{ redis_databases }}
+daemonize no
+supervised systemd
+loglevel notice
+logfile /var/log/redis/redis-server.log
+
+# -------------------------------------------------------------------
+# Security
+# -------------------------------------------------------------------
+# No password needed — Unix socket access is restricted by filesystem permissions
+# The www-data user (Nextcloud/PHP-FPM) must be able to connect via the socket
+
+# -------------------------------------------------------------------
+# Slow log (useful for debugging)
+# -------------------------------------------------------------------
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+
+# -------------------------------------------------------------------
+# Client limits
+# -------------------------------------------------------------------
+maxclients 10000
+timeout 0
+tcp-keepalive 300
