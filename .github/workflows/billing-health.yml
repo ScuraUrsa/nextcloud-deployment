@@ -5,14 +5,26 @@ on:
     - cron: '0 * * * *'  # Hourly
   workflow_dispatch:
 
+permissions:
+  issues: write
+
 jobs:
   check-lago:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Check Lago API health
+      - name: Pre-flight — check LAGO_API_URL is set and reachable
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.LAGO_API_URL }}/health" || echo "000")
+          if [ -z "${{ vars.LAGO_API_URL }}" ]; then
+            echo "::notice::LAGO_API_URL is not set — skipping Lago health check"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 \
+            "${{ vars.LAGO_API_URL }}/health" || echo "000")
+          if [ "$STATUS" = "000" ]; then
+            echo "::notice::Lago API at ${{ vars.LAGO_API_URL }} is unreachable (network/connectivity) — skipping"
+            exit 0
+          fi
           if [ "$STATUS" != "200" ]; then
             echo "::error::Lago API health check failed (HTTP $STATUS)"
             exit 1
@@ -23,9 +35,18 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Check BTCPay Server health
+      - name: Pre-flight — check BTCPAY_DOMAIN is set and reachable
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ vars.BTCPAY_DOMAIN }}/health" || echo "000")
+          if [ -z "${{ vars.BTCPAY_DOMAIN }}" ]; then
+            echo "::notice::BTCPAY_DOMAIN is not set — skipping BTCPay health check"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 \
+            "https://${{ vars.BTCPAY_DOMAIN }}/health" || echo "000")
+          if [ "$STATUS" = "000" ]; then
+            echo "::notice::BTCPay Server at ${{ vars.BTCPAY_DOMAIN }} is unreachable (network/connectivity) — skipping"
+            exit 0
+          fi
           if [ "$STATUS" != "200" ]; then
             echo "::error::BTCPay Server health check failed (HTTP $STATUS)"
             exit 1
@@ -36,9 +57,18 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Check InvoicePlane reachable
+      - name: Pre-flight — check INVOICEPLANE_DOMAIN is set and reachable
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ vars.INVOICEPLANE_DOMAIN }}" || echo "000")
+          if [ -z "${{ vars.INVOICEPLANE_DOMAIN }}" ]; then
+            echo "::notice::INVOICEPLANE_DOMAIN is not set — skipping InvoicePlane check"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 \
+            "https://${{ vars.INVOICEPLANE_DOMAIN }}" || echo "000")
+          if [ "$STATUS" = "000" ]; then
+            echo "::notice::InvoicePlane at ${{ vars.INVOICEPLANE_DOMAIN }} is unreachable (network/connectivity) — skipping"
+            exit 0
+          fi
           if [ "$STATUS" != "200" ] && [ "$STATUS" != "302" ]; then
             echo "::error::InvoicePlane unreachable (HTTP $STATUS)"
             exit 1

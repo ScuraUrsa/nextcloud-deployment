@@ -5,12 +5,28 @@ on:
     - cron: '0 4 * * *'  # Daily 04:00 UTC = 06:00 CEST
   workflow_dispatch:
 
+permissions:
+  issues: write
+
 jobs:
   nextcloud-security-scan:
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Pre-flight — check PRODUCTION_URL is set and reachable
+        run: |
+          if [ -z "${{ vars.PRODUCTION_URL }}" ]; then
+            echo "::notice::PRODUCTION_URL is not set — skipping Nextcloud security scan"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 \
+            "https://${{ vars.PRODUCTION_URL }}" || echo "000")
+          if [ "$STATUS" = "000" ]; then
+            echo "::notice::Nextcloud at ${{ vars.PRODUCTION_URL }} is unreachable (network/connectivity) — skipping scan"
+            exit 0
+          fi
+          echo "Nextcloud reachable (HTTP $STATUS) — proceeding with scan"
       - name: Run Nextcloud security scanner
         run: |
           SCAN_URL="https://security-scan.nextcloud.com/api/scan"
@@ -39,6 +55,19 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Pre-flight — check PRODUCTION_URL is set and reachable
+        run: |
+          if [ -z "${{ vars.PRODUCTION_URL }}" ]; then
+            echo "::notice::PRODUCTION_URL is not set — skipping SSL check"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 \
+            "https://${{ vars.PRODUCTION_URL }}" || echo "000")
+          if [ "$STATUS" = "000" ]; then
+            echo "::notice::Nextcloud at ${{ vars.PRODUCTION_URL }} is unreachable (network/connectivity) — skipping SSL check"
+            exit 0
+          fi
+          echo "Nextcloud reachable (HTTP $STATUS) — proceeding with SSL check"
       - name: Install testssl.sh
         run: |
           git clone --depth 1 https://github.com/drwetter/testssl.sh.git /tmp/testssl
