@@ -14,7 +14,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: Pre-flight — check PRODUCTION_URL is set and reachable
+      - name: Resolve PRODUCTION_URL and check reachability
+        id: preflight
         run: |
           URL="${{ vars.PRODUCTION_URL }}"
           if [ -z "$URL" ]; then
@@ -22,22 +23,22 @@ jobs:
           fi
           if [ -z "$URL" ]; then
             echo "::notice::PRODUCTION_URL is not set (neither as var nor secret) — skipping Nextcloud security scan"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "PRODUCTION_URL is set — checking reachability"
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 \
             "https://${URL}" || echo "000")
           if [ "$STATUS" = "000" ]; then
             echo "::notice::Nextcloud at ${URL} is unreachable (network/connectivity) — skipping scan"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Nextcloud reachable (HTTP $STATUS) — proceeding with scan"
       - name: Run Nextcloud security scanner
+        if: steps.preflight.outputs.skip != 'true'
         run: |
-          URL="${{ vars.PRODUCTION_URL }}"
-          if [ -z "$URL" ]; then
-            URL="${{ secrets.PRODUCTION_URL }}"
-          fi
+          URL="${{ steps.preflight.outputs.url }}"
           SCAN_URL="https://security-scan.nextcloud.com/api/scan"
           RESPONSE=$(curl -s -X POST "$SCAN_URL" -d "url=${URL}")
           echo "Scan result: $RESPONSE"
@@ -47,7 +48,7 @@ jobs:
             echo "::warning::Security rating is $RATING — below A"
           fi
       - name: Create issue if rating below A+
-        if: failure()
+        if: failure() && steps.preflight.outputs.skip != 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -64,7 +65,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: Pre-flight — check PRODUCTION_URL is set and reachable
+      - name: Resolve PRODUCTION_URL and check reachability
+        id: preflight
         run: |
           URL="${{ vars.PRODUCTION_URL }}"
           if [ -z "$URL" ]; then
@@ -72,27 +74,29 @@ jobs:
           fi
           if [ -z "$URL" ]; then
             echo "::notice::PRODUCTION_URL is not set (neither as var nor secret) — skipping SSL check"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "PRODUCTION_URL is set — checking reachability"
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 \
             "https://${URL}" || echo "000")
           if [ "$STATUS" = "000" ]; then
             echo "::notice::Nextcloud at ${URL} is unreachable (network/connectivity) — skipping SSL check"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Nextcloud reachable (HTTP $STATUS) — proceeding with SSL check"
       - name: Install testssl.sh
+        if: steps.preflight.outputs.skip != 'true'
         run: |
           git clone --depth 1 https://github.com/drwetter/testssl.sh.git /tmp/testssl
       - name: Run SSL check
+        if: steps.preflight.outputs.skip != 'true'
         run: |
-          URL="${{ vars.PRODUCTION_URL }}"
-          if [ -z "$URL" ]; then
-            URL="${{ secrets.PRODUCTION_URL }}"
-          fi
+          URL="${{ steps.preflight.outputs.url }}"
           /tmp/testssl/testssl.sh --quiet --protocols --cipher-per-proto "${URL}" 2>&1 | tee ssl-report.txt
       - name: Verify TLS version
+        if: steps.preflight.outputs.skip != 'true'
         run: |
           if grep -q "TLSv1.0\|TLSv1.1\|SSLv" ssl-report.txt; then
             echo "::error::Weak TLS/SSL protocols detected"
@@ -100,7 +104,7 @@ jobs:
           fi
           echo "TLS protocols OK"
       - name: Create issue on failure
-        if: failure()
+        if: failure() && steps.preflight.outputs.skip != 'true'
         uses: actions/github-script@v7
         with:
           script: |
