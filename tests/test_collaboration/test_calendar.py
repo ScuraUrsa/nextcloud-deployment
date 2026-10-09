@@ -10,13 +10,14 @@ Environment variables:
     NEXTCLOUD_ADMIN_PASS   - Admin password
 """
 
+import contextlib
 import os
 import uuid
-import pytest
-import requests
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from xml.etree import ElementTree as ET
 
+import pytest
+import requests
 
 # ---------------------------------------------------------------------------
 # Namespaces used in CalDAV / WebDAV XML
@@ -108,7 +109,7 @@ def _delete(url):
 def _ics_event(summary, dtstart, dtend, uid=None, description=""):
     """Build a minimal VEVENT iCalendar string."""
     uid = uid or f"{uuid.uuid4().hex}@nextcloud-deployment"
-    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    now = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return (
         "BEGIN:VCALENDAR\r\n"
         "VERSION:2.0\r\n"
@@ -128,7 +129,7 @@ def _ics_event(summary, dtstart, dtend, uid=None, description=""):
 def _ics_recurring(summary, dtstart, dtend, rrule, uid=None):
     """Build a recurring VEVENT iCalendar string."""
     uid = uid or f"{uuid.uuid4().hex}@nextcloud-deployment"
-    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    now = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return (
         "BEGIN:VCALENDAR\r\n"
         "VERSION:2.0\r\n"
@@ -169,10 +170,8 @@ def calendar_url(admin_user, unique_suffix):
     _mkcalendar(url, displayname=cal_name)
     yield url
     # Cleanup: delete the calendar
-    try:
+    with contextlib.suppress(requests.RequestException):  # best-effort cleanup
         _delete(url)
-    except Exception:
-        pass  # best-effort cleanup
 
 
 # ---------------------------------------------------------------------------
@@ -222,8 +221,8 @@ def test_create_calendar(admin_user, unique_suffix):
 @pytest.mark.collaboration
 def test_create_event(calendar_url):
     """Create a single event in a calendar."""
-    start = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y%m%dT%H%M%SZ")
-    end = (datetime.now(timezone.utc) + timedelta(days=1, hours=1)).strftime("%Y%m%dT%H%M%SZ")
+    start = (datetime.now(UTC) + timedelta(days=1)).strftime("%Y%m%dT%H%M%SZ")
+    end = (datetime.now(UTC) + timedelta(days=1, hours=1)).strftime("%Y%m%dT%H%M%SZ")
     ics = _ics_event("Test Single Event", start, end, description="Created by pytest")
     event_url = _put_event(calendar_url, ics)
 
@@ -240,8 +239,8 @@ def test_create_event(calendar_url):
 @pytest.mark.collaboration
 def test_create_recurring_event(calendar_url):
     """Create a recurring event with an RRULE."""
-    start = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y%m%dT%H%M%SZ")
-    end = (datetime.now(timezone.utc) + timedelta(days=2, hours=1)).strftime("%Y%m%dT%H%M%SZ")
+    start = (datetime.now(UTC) + timedelta(days=2)).strftime("%Y%m%dT%H%M%SZ")
+    end = (datetime.now(UTC) + timedelta(days=2, hours=1)).strftime("%Y%m%dT%H%M%SZ")
     ics = _ics_recurring(
         "Weekly Standup", start, end,
         rrule="FREQ=WEEKLY;COUNT=10;BYDAY=MO",
@@ -262,8 +261,8 @@ def test_create_recurring_event(calendar_url):
 @pytest.mark.collaboration
 def test_update_event(calendar_url):
     """Update an event's time and description."""
-    start = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y%m%dT%H%M%SZ")
-    end = (datetime.now(timezone.utc) + timedelta(days=3, hours=1)).strftime("%Y%m%dT%H%M%SZ")
+    start = (datetime.now(UTC) + timedelta(days=3)).strftime("%Y%m%dT%H%M%SZ")
+    end = (datetime.now(UTC) + timedelta(days=3, hours=1)).strftime("%Y%m%dT%H%M%SZ")
     uid = f"{uuid.uuid4().hex}@nextcloud-deployment"
 
     # Create initial event
@@ -271,8 +270,8 @@ def test_update_event(calendar_url):
     event_url = _put_event(calendar_url, ics_original)
 
     # Update: new time and description
-    new_start = (datetime.now(timezone.utc) + timedelta(days=4)).strftime("%Y%m%dT%H%M%SZ")
-    new_end = (datetime.now(timezone.utc) + timedelta(days=4, hours=2)).strftime("%Y%m%dT%H%M%SZ")
+    new_start = (datetime.now(UTC) + timedelta(days=4)).strftime("%Y%m%dT%H%M%SZ")
+    new_end = (datetime.now(UTC) + timedelta(days=4, hours=2)).strftime("%Y%m%dT%H%M%SZ")
     ics_updated = _ics_event("Updated Title", new_start, new_end, uid=uid, description="After update")
     _put_event(calendar_url, ics_updated)  # same URL, overwrites
 
@@ -290,8 +289,8 @@ def test_update_event(calendar_url):
 @pytest.mark.collaboration
 def test_delete_event(calendar_url):
     """Delete an event and verify it is gone."""
-    start = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y%m%dT%H%M%SZ")
-    end = (datetime.now(timezone.utc) + timedelta(days=5, hours=1)).strftime("%Y%m%dT%H%M%SZ")
+    start = (datetime.now(UTC) + timedelta(days=5)).strftime("%Y%m%dT%H%M%SZ")
+    end = (datetime.now(UTC) + timedelta(days=5, hours=1)).strftime("%Y%m%dT%H%M%SZ")
     ics = _ics_event("Event To Delete", start, end)
     event_url = _put_event(calendar_url, ics)
 

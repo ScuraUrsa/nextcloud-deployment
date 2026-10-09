@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import pytest
 
+from ..utils.data_generators import (
+    generate_random_file,
+    generate_test_filename,
+    generate_test_user_data,
+)
 from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
-from ..utils.data_generators import generate_test_user_data, generate_random_file, generate_test_filename
-
 
 pytestmark = pytest.mark.tiers
 
@@ -64,8 +67,9 @@ class TestQuotaEnforcement:
         except NextcloudAPIError as exc:
             pytest.fail(f"Failed to verify quota: {exc}")
 
-        import requests
         import base64
+
+        import requests
 
         user_session = requests.Session()
         auth_raw = f"{username}:{password}"
@@ -97,10 +101,7 @@ class TestQuotaEnforcement:
                 )
                 if resp.status_code in (200, 201, 204):
                     uploaded += 1
-                elif resp.status_code == 507:  # Insufficient Storage
-                    quota_hit = True
-                    break
-                elif resp.status_code in (403, 413):
+                elif resp.status_code == 507 or resp.status_code in (403, 413):  # Insufficient Storage
                     quota_hit = True
                     break
             except requests.RequestException:
@@ -108,7 +109,7 @@ class TestQuotaEnforcement:
 
         # At least one file should have been uploaded
         assert uploaded >= 1, (
-            f"Could not upload even a single file. Quota may be 0 or user has no storage."
+            "Could not upload even a single file. Quota may be 0 or user has no storage."
         )
 
         # If we uploaded 4+ chunks (1 MB+), quota should have been hit

@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Custom exception
@@ -24,7 +23,7 @@ import requests
 class KeycloakAPIError(Exception):
     """Raised when a Keycloak API call fails."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None, response_text: str = ""):
+    def __init__(self, message: str, status_code: int | None = None, response_text: str = ""):
         super().__init__(message)
         self.status_code = status_code
         self.response_text = response_text
@@ -38,12 +37,12 @@ class KeycloakAPIError(Exception):
 class KeycloakUser:
     id: str
     username: str
-    email: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
     enabled: bool = True
     email_verified: bool = False
-    attributes: Dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -51,7 +50,7 @@ class KeycloakGroup:
     id: str
     name: str
     path: str
-    sub_groups: List[KeycloakGroup] = field(default_factory=list)
+    sub_groups: list[KeycloakGroup] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +97,7 @@ class KeycloakAPI:
         assert self._token is not None
         return self._token
 
-    def _admin_headers(self) -> Dict[str, str]:
+    def _admin_headers(self) -> dict[str, str]:
         token = self.get_admin_token()
         return {
             "Authorization": f"Bearer {token}",
@@ -109,8 +108,8 @@ class KeycloakAPI:
         self,
         method: str,
         path: str,
-        json_data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> requests.Response:
         url = f"{self.base_url}/admin/realms/{self.realm}/{path.lstrip('/')}"
         resp = self.session.request(
@@ -140,10 +139,10 @@ class KeycloakAPI:
         enabled: bool = True,
         email_verified: bool = False,
         password: str = "",
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: dict[str, Any] | None = None,
     ) -> KeycloakUser:
         """Create a new user in the realm."""
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "username": username,
             "enabled": enabled,
             "emailVerified": email_verified,
@@ -189,7 +188,7 @@ class KeycloakAPI:
             attributes=data.get("attributes", {}),
         )
 
-    def get_user_by_username(self, username: str) -> Optional[KeycloakUser]:
+    def get_user_by_username(self, username: str) -> KeycloakUser | None:
         """Find a user by username. Returns None if not found."""
         resp = self._admin_request("GET", "users", params={"username": username, "exact": "true"})
         users = resp.json()
@@ -228,12 +227,12 @@ class KeycloakAPI:
         group_id = location.rsplit("/", 1)[-1] if location else ""
         return KeycloakGroup(id=group_id, name=name, path=f"/{name}")
 
-    def get_groups(self) -> List[KeycloakGroup]:
+    def get_groups(self) -> list[KeycloakGroup]:
         """List all groups in the realm."""
         resp = self._admin_request("GET", "groups")
         raw_groups = resp.json()
 
-        def _parse_group(g: Dict[str, Any]) -> KeycloakGroup:
+        def _parse_group(g: dict[str, Any]) -> KeycloakGroup:
             sub = [_parse_group(s) for s in g.get("subGroups", [])]
             return KeycloakGroup(
                 id=g.get("id", ""),
@@ -254,7 +253,8 @@ class KeycloakAPI:
 
     # -- realm export ------------------------------------------------------
 
-    def export_realm(self) -> Dict[str, Any]:
+    def export_realm(self) -> dict[str, Any]:
         """Export the realm configuration (partial export)."""
         resp = self._admin_request("POST", "partial-export", json_data={"exportClients": True, "exportGroupsAndRoles": True})
-        return resp.json()
+        data: dict[str, Any] = resp.json()
+        return data

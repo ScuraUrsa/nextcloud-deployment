@@ -1,0 +1,18 @@
+# Bandit configuration for the test suite (`bandit -r tests/ -c bandit.yaml`).
+#
+# Skipped checks and why they do not apply to this code:
+#   B101  assert_used                  - plain `assert` is how pytest tests are written.
+#   B105  hardcoded_password_string    - throwaway passwords for disposable test users
+#   B106  hardcoded_password_funcarg     created and deleted by the tests themselves;
+#   B107  hardcoded_password_default     real credentials come from environment variables.
+#   B314  xml_bad_etree / B405 import  - only WebDAV/CalDAV responses from the deployment
+#                                        under test are parsed; the stdlib expat parser
+#                                        (>= 2.4.1, Python >= 3.11) does not resolve external
+#                                        entities and limits entity expansion.
+skips:
+  - B101
+  - B105
+  - B106
+  - B107
+  - B314
+  - B405

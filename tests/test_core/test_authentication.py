@@ -12,10 +12,10 @@ All tests are marked @pytest.mark.smoke.
 """
 
 import re
-import pytest
-import requests
 from urllib.parse import urljoin
 
+import pytest
+import requests
 
 pytestmark = pytest.mark.smoke
 
@@ -45,9 +45,7 @@ def _is_logged_in(session, base_url) -> bool:
         )
         # If we get a 200 and stay on the settings page, we're logged in
         # If we get redirected to /login, we're not
-        if resp.status_code == 200 and "/login" not in resp.url:
-            return True
-        return False
+        return resp.status_code == 200 and "/login" not in resp.url
     except requests.RequestException:
         return False
 
@@ -163,7 +161,7 @@ class TestLogout:
         # Perform logout
         logout_url = urljoin(base_url, "/logout")
         try:
-            resp = session.get(logout_url, timeout=30, allow_redirects=True)
+            session.get(logout_url, timeout=30, allow_redirects=True)
         except requests.RequestException as exc:
             pytest.fail(f"Logout request failed: {exc}")
 

@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import os
 import uuid
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -179,7 +179,6 @@ def test_fetch_articles(unique_suffix):
         # Fetch articles for this feed
         articles_result = _news_api_get("items", params={"feedId": feed_id, "limit": 5})
         # The response should contain items/articles
-        items = articles_result.get("items", [])
         # A fresh subscription may have 0 items initially (fetch happens async),
         # so we just verify the API call succeeded
         assert "items" in articles_result or "error" not in str(articles_result).lower(), (

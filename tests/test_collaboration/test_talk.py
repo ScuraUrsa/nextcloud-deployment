@@ -10,11 +10,12 @@ Environment variables:
     NEXTCLOUD_ADMIN_PASS   - Admin password
 """
 
+import contextlib
 import os
 import uuid
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -126,10 +127,8 @@ def conversation(admin_user, unique_suffix):
     token = ocs.get("data", {}).get("token", "")
     assert token, f"Failed to create conversation: {result}"
     yield token
-    try:
+    with contextlib.suppress(requests.RequestException):  # best-effort cleanup
         _delete_conversation(token)
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------

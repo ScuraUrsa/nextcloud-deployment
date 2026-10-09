@@ -16,13 +16,12 @@ Verifies:
 All tests are marked @pytest.mark.core.
 """
 
-import os
-import uuid
 import hashlib
-import pytest
-import requests
+import uuid
 from urllib.parse import urljoin
 
+import pytest
+import requests
 
 pytestmark = pytest.mark.core
 
@@ -376,7 +375,7 @@ class TestUnicodeFilename:
 
         # Unicode filename with various scripts
         filename = f"tést-файл-日本語-{uuid.uuid4().hex[:4]}.txt"
-        content = "Unicode filename test content ✓".encode("utf-8")
+        content = "Unicode filename test content ✓".encode()
         url = _dav_url(base_url, userid, filename)
 
         resp = _dav_request("PUT", session, url, data=content)

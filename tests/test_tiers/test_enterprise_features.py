@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import pytest
 
+from ..utils.data_generators import (
+    generate_random_file,
+    generate_test_filename,
+    generate_test_user_data,
+)
 from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
-from ..utils.data_generators import generate_test_user_data, generate_random_file, generate_test_filename
-
 
 pytestmark = pytest.mark.tiers
 
@@ -51,8 +54,9 @@ class TestEnterpriseFeatures:
             except NextcloudAPIError as exc:
                 pytest.fail(f"Failed to add user to nc-enterprise group: {exc}")
 
-        import requests
         import base64
+
+        import requests
 
         user_session = requests.Session()
         auth_raw = f"{username}:{password}"

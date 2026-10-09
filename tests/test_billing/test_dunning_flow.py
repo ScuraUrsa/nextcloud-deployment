@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import pytest
 
+from ..utils.data_generators import generate_test_user_data
 from ..utils.lago_api import LagoAPI, LagoAPIError
 from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
-from ..utils.data_generators import generate_test_user_data
-
 
 pytestmark = pytest.mark.billing
 
@@ -81,7 +80,7 @@ class TestDunningFlow:
             user_data_ocs = user_resp.ocs_data
             if isinstance(user_data_ocs, dict):
                 assert user_data_ocs.get("enabled", False), (
-                    f"User should be enabled initially"
+                    "User should be enabled initially"
                 )
         except NextcloudAPIError as exc:
             pytest.fail(f"Failed to get user: {exc}")
@@ -108,7 +107,7 @@ class TestDunningFlow:
             user_data_ocs = user_resp.ocs_data
             if isinstance(user_data_ocs, dict):
                 assert not user_data_ocs.get("enabled", True), (
-                    f"User should be disabled after overdue payment"
+                    "User should be disabled after overdue payment"
                 )
         except NextcloudAPIError as exc:
             pytest.fail(f"Failed to verify user disabled state: {exc}")

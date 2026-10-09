@@ -8,12 +8,10 @@ Covers:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Custom exception
@@ -22,7 +20,7 @@ import requests
 class LagoAPIError(Exception):
     """Raised when a Lago API call fails."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None, response_text: str = ""):
+    def __init__(self, message: str, status_code: int | None = None, response_text: str = ""):
         super().__init__(message)
         self.status_code = status_code
         self.response_text = response_text
@@ -50,9 +48,9 @@ class LagoSubscription:
     external_id: str
     plan_code: str
     status: str  # active, pending, terminated, canceled
-    started_at: Optional[str] = None
-    canceled_at: Optional[str] = None
-    terminated_at: Optional[str] = None
+    started_at: str | None = None
+    canceled_at: str | None = None
+    terminated_at: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +73,9 @@ class LagoAPI:
         self,
         method: str,
         path: str,
-        json_data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         url = f"{self.base_url}/api/v1/{path.lstrip('/')}"
         resp = self.session.request(
             method=method,
@@ -92,7 +90,8 @@ class LagoAPI:
                 status_code=resp.status_code,
                 response_text=resp.text,
             )
-        return resp.json()
+        data: dict[str, Any] = resp.json()
+        return data
 
     # -- plans -------------------------------------------------------------
 
@@ -137,7 +136,7 @@ class LagoAPI:
         self,
         external_customer_id: str,
         plan_code: str,
-        external_id: Optional[str] = None,
+        external_id: str | None = None,
     ) -> LagoSubscription:
         """Create a new subscription for a customer."""
         payload = {
@@ -191,12 +190,12 @@ class LagoAPI:
 
     def list_subscriptions(
         self,
-        external_customer_id: Optional[str] = None,
-        plan_code: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> List[LagoSubscription]:
+        external_customer_id: str | None = None,
+        plan_code: str | None = None,
+        status: str | None = None,
+    ) -> list[LagoSubscription]:
         """List subscriptions with optional filters."""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if external_customer_id:
             params["external_customer_id"] = external_customer_id
         if plan_code:
@@ -206,7 +205,7 @@ class LagoAPI:
 
         data = self._request("GET", "subscriptions", params=params)
         subs = data.get("subscriptions", [])
-        results: List[LagoSubscription] = []
+        results: list[LagoSubscription] = []
         for s in subs:
             results.append(LagoSubscription(
                 lago_id=s.get("lago_id", ""),

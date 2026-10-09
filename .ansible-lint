@@ -1,0 +1,23 @@
+---
+# ansible-lint configuration (picked up automatically from the repository root).
+profile: production
+
+# Rules skipped because they are purely stylistic for this repository and
+# changing them would mean a large, risky churn with no functional benefit:
+#   var-naming[no-role-prefix] - roles use short "_"-prefixed scratch variables for
+#                                register/set_fact results (e.g. _nc_actual_hash);
+#                                renaming ~270 of them across roles adds no safety.
+#   name[template]             - task names interpolate the item being processed
+#                                (e.g. "Remove '{{ user }}' from group") mid-sentence
+#                                on purpose, for readable run output.
+#   key-order[task]            - only reorders keys of block tasks (tags/loop before
+#                                block); no behavioural difference.
+skip_list:
+  - var-naming[no-role-prefix]
+  - name[template]
+  - key-order[task]
+
+exclude_paths:
+  - .ansible/
+  - .github/
+  - tests/

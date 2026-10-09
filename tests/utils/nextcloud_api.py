@@ -16,10 +16,9 @@ from __future__ import annotations
 import base64
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Custom exception
@@ -28,7 +27,7 @@ import requests
 class NextcloudAPIError(Exception):
     """Raised when a Nextcloud API call fails."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None, response_text: str = ""):
+    def __init__(self, message: str, status_code: int | None = None, response_text: str = ""):
         super().__init__(message)
         self.status_code = status_code
         self.response_text = response_text
@@ -41,9 +40,9 @@ class NextcloudAPIError(Exception):
 @dataclass
 class WebDAVResponse:
     status_code: int
-    headers: Dict[str, str]
+    headers: dict[str, str]
     body: bytes
-    xml_tree: Optional[ET.Element] = None
+    xml_tree: ET.Element | None = None
 
     @property
     def ok(self) -> bool:
@@ -53,19 +52,19 @@ class WebDAVResponse:
 @dataclass
 class OCSResponse:
     status_code: int
-    ocs_meta: Dict[str, Any]
+    ocs_meta: dict[str, Any]
     ocs_data: Any
-    raw: Dict[str, Any]
+    raw: dict[str, Any]
 
 
 @dataclass
 class UserInfo:
     id: str
     display_name: str
-    email: Optional[str] = None
-    quota: Optional[Dict[str, Any]] = None
+    email: str | None = None
+    quota: dict[str, Any] | None = None
     enabled: bool = True
-    groups: List[str] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -77,7 +76,7 @@ class ShareInfo:
     permissions: int
     uid_owner: str
     uid_file_owner: str
-    token: Optional[str] = None
+    token: str | None = None
 
 
 @dataclass
@@ -144,8 +143,8 @@ class NextcloudAPI:
         self,
         method: str,
         endpoint: str,
-        data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> OCSResponse:
         url = f"{self.base_url}/ocs/v2.php/{endpoint}"
         headers = {
@@ -188,9 +187,9 @@ class NextcloudAPI:
         self,
         method: str,
         path: str,
-        data: Optional[bytes] = None,
-        headers: Optional[Dict[str, str]] = None,
-        depth: Optional[int] = None,
+        data: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        depth: int | None = None,
     ) -> WebDAVResponse:
         url = f"{self.base_url}/remote.php/dav/files/{self.admin_user}/{path.lstrip('/')}"
         req_headers = {"Authorization": self._auth_header}
@@ -287,12 +286,12 @@ class NextcloudAPI:
 
     def get_shares(
         self,
-        path: Optional[str] = None,
+        path: str | None = None,
         reshares: bool = False,
         subfiles: bool = False,
     ) -> OCSResponse:
         """List shares, optionally filtered by path."""
-        params: Dict[str, Any] = {"reshares": str(reshares).lower(), "subfiles": str(subfiles).lower()}
+        params: dict[str, Any] = {"reshares": str(reshares).lower(), "subfiles": str(subfiles).lower()}
         if path:
             params["path"] = path
         return self._ocs_request("GET", "apps/files_sharing/api/v1/shares", params=params)
@@ -309,10 +308,10 @@ class NextcloudAPI:
         password: str = "",
         display_name: str = "",
         email: str = "",
-        groups: Optional[List[str]] = None,
+        groups: list[str] | None = None,
     ) -> OCSResponse:
         """Create a new user."""
-        data: Dict[str, Any] = {"userid": userid}
+        data: dict[str, Any] = {"userid": userid}
         if password:
             data["password"] = password
         if display_name:

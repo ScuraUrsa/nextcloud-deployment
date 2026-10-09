@@ -14,12 +14,11 @@ All tests are marked @pytest.mark.core.
 """
 
 import uuid
-import json
+from datetime import UTC, datetime, timedelta
+from urllib.parse import urljoin
+
 import pytest
 import requests
-from urllib.parse import urljoin
-from datetime import datetime, timedelta, timezone
-
 
 pytestmark = pytest.mark.core
 
@@ -288,7 +287,7 @@ class TestSharePublicLinkPassword:
         share_path = f"/{file_info['filename']}"
         password = "PublicLinkPass123!"
         # Expiry 7 days from now
-        expire_date = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d")
+        expire_date = (datetime.now(UTC) + timedelta(days=7)).strftime("%Y-%m-%d")
 
         resp = _create_share(
             session, base_url, share_path,

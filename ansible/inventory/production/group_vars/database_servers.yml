@@ -10,5 +10,5 @@ postgresql_maintenance_work_mem: "512MB"
 postgresql_max_connections: 50
 postgresql_random_page_cost: 1.1
 postgresql_wal_level: replica
-postgresql_archive_mode: on
+postgresql_archive_mode: true
 postgresql_listen_addresses: localhost

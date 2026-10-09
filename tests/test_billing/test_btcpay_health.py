@@ -14,7 +14,6 @@ import os
 import pytest
 import requests
 
-
 pytestmark = pytest.mark.billing
 
 

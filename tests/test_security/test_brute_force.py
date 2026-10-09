@@ -14,10 +14,10 @@ Environment variables:
 import os
 import re
 import time
-import pytest
-import requests
 from urllib.parse import urljoin
 
+import pytest
+import requests
 
 pytestmark = pytest.mark.security
 

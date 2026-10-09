@@ -12,12 +12,13 @@ Environment variables:
     NEXTCLOUD_ADMIN_PASS   - Admin password
 """
 
+import contextlib
 import os
 import time
 import uuid
+
 import pytest
 import requests
-
 
 pytestmark = pytest.mark.performance
 
@@ -71,10 +72,8 @@ class TestUploadSpeed:
         elapsed = time.monotonic() - start
 
         # Cleanup: delete the uploaded file
-        try:
+        with contextlib.suppress(requests.RequestException):  # best-effort cleanup
             requests.delete(url, auth=_auth(), timeout=30)
-        except Exception:
-            pass
 
         # Assert upload succeeded
         assert resp.status_code in (201, 204), (

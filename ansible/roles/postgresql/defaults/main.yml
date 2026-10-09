@@ -24,7 +24,7 @@ postgresql_random_page_cost: 1.1
 
 # WAL archiving for point-in-time recovery
 postgresql_wal_level: replica
-postgresql_archive_mode: on
+postgresql_archive_mode: true
 postgresql_archive_command: "test ! -f /var/lib/postgresql/16/main/wal_archive/%f && cp %p /var/lib/postgresql/16/main/wal_archive/%f"
 
 # Network — listen on localhost only (Nextcloud connects locally)

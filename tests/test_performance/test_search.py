@@ -12,12 +12,13 @@ Environment variables:
     NEXTCLOUD_ADMIN_PASS   - Admin password
 """
 
+import contextlib
 import os
 import time
 import uuid
+
 import pytest
 import requests
-
 
 pytestmark = pytest.mark.performance
 
@@ -62,7 +63,7 @@ class TestSearchLatency:
         # something to find. This makes the test self-contained.
         search_term = f"searchtest-{uuid.uuid4().hex[:8]}"
         filename = f"search-{uuid.uuid4().hex[:8]}.txt"
-        content = f"This file contains the unique term: {search_term}".encode("utf-8")
+        content = f"This file contains the unique term: {search_term}".encode()
 
         # Upload the file
         put_url = _dav_url(filename)
@@ -124,7 +125,5 @@ class TestSearchLatency:
 
         finally:
             # Cleanup: delete the uploaded file
-            try:
+            with contextlib.suppress(requests.RequestException):  # best-effort cleanup
                 requests.delete(put_url, auth=_auth(), timeout=30)
-            except Exception:
-                pass

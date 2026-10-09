@@ -1,0 +1,27 @@
+---
+# yamllint configuration, compatible with ansible-lint's own yamllint rules
+# (ansible-lint reads this file too).
+extends: default
+
+ignore: |
+  .ansible/
+  .git/
+
+rules:
+  # Jinja2 expressions inside flow mappings are written as "{ key: '{{ x }}' }".
+  braces:
+    max-spaces-inside: 1
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  # Templated download/API URLs (e.g. GitHub release assets, Keycloak admin
+  # endpoints) cannot be wrapped without changing their value.
+  line-length:
+    max: 250
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy:
+    allowed-values: ["true", "false"]
+    # GitHub Actions uses the "on:" key.
+    check-keys: false

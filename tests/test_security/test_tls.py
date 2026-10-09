@@ -12,10 +12,10 @@ Environment variables:
 """
 
 import os
-import ssl
 import socket
-import pytest
+import ssl
 
+import pytest
 
 pytestmark = pytest.mark.security
 
@@ -105,7 +105,7 @@ class TestTLS:
 
         try:
             version, _ = _get_tls_version_and_ciphers()
-        except (ssl.SSLError, socket.error, ConnectionRefusedError) as exc:
+        except (OSError, ssl.SSLError, ConnectionRefusedError) as exc:
             pytest.fail(f"TLS connection failed: {exc}")
 
         # TLS 1.0 and 1.1 are deprecated
@@ -129,7 +129,7 @@ class TestTLS:
 
         try:
             _, cipher = _get_tls_version_and_ciphers()
-        except (ssl.SSLError, socket.error, ConnectionRefusedError) as exc:
+        except (OSError, ssl.SSLError, ConnectionRefusedError) as exc:
             pytest.fail(f"TLS connection failed: {exc}")
 
         # cipher is a 3-tuple: (name, protocol_version, secret_bits)

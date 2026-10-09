@@ -256,7 +256,7 @@
   tags: [billing, invoiceplane, packages]
 
 - name: Create InvoicePlane MySQL database
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: "{{ invoiceplane_db_name }}"
     state: present
     login_unix_socket: /var/run/mysqld/mysqld.sock
@@ -265,7 +265,7 @@
   tags: [billing, invoiceplane, database]
 
 - name: Create InvoicePlane MySQL user
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ invoiceplane_db_user }}"
     password: "{{ invoiceplane_db_pass }}"
     priv: "{{ invoiceplane_db_name }}.*:ALL"

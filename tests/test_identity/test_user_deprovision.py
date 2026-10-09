@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import pytest
 
+from ..utils.data_generators import generate_test_user_data
 from ..utils.keycloak_api import KeycloakAPI, KeycloakAPIError
 from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
-from ..utils.data_generators import generate_test_user_data
-
 
 pytestmark = pytest.mark.identity
 
@@ -69,7 +68,7 @@ class TestUserDeprovision:
             nc_data = nc_user.ocs_data
             if isinstance(nc_data, dict):
                 assert nc_data.get("enabled", False), (
-                    f"Nextcloud user should be enabled initially"
+                    "Nextcloud user should be enabled initially"
                 )
         except NextcloudAPIError as exc:
             pytest.fail(f"Failed to get Nextcloud user: {exc}")
@@ -102,7 +101,7 @@ class TestUserDeprovision:
             nc_data_after = nc_user_after.ocs_data
             if isinstance(nc_data_after, dict):
                 assert not nc_data_after.get("enabled", True), (
-                    f"Nextcloud user should be disabled after deprovisioning"
+                    "Nextcloud user should be disabled after deprovisioning"
                 )
         except NextcloudAPIError as exc:
             pytest.fail(f"Failed to get Nextcloud user after disable: {exc}")

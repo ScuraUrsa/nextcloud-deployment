@@ -10,12 +10,13 @@ Environment variables:
     NEXTCLOUD_ADMIN_PASS   - Admin password
 """
 
+import contextlib
 import os
 import uuid
-import pytest
-import requests
 from xml.etree import ElementTree as ET
 
+import pytest
+import requests
 
 # ---------------------------------------------------------------------------
 # Namespaces
@@ -121,10 +122,8 @@ def addressbook_url(admin_user, unique_suffix):
     url = f"{_carddav_root(admin_user)}/{ab_name}"
     _mkcol(url)
     yield url
-    try:
+    with contextlib.suppress(requests.RequestException):  # best-effort cleanup
         _delete(url)
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------

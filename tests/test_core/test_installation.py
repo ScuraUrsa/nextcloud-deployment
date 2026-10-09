@@ -13,13 +13,12 @@ Verifies:
 All tests are marked @pytest.mark.smoke.
 """
 
-import os
-import re
 import json
-import pytest
-import requests
+import os
 from urllib.parse import urljoin
 
+import pytest
+import requests
 
 pytestmark = pytest.mark.smoke
 
@@ -84,7 +83,7 @@ class TestNextcloudInstalled:
 class TestPhpModules:
     """Verify required PHP modules are loaded."""
 
-    REQUIRED_MODULES = [
+    REQUIRED_MODULES = (
         "pgsql",       # PostgreSQL
         "redis",       # Redis
         "curl",        # HTTP
@@ -104,7 +103,7 @@ class TestPhpModules:
         "posix",       # POSIX
         "simplexml",   # SimpleXML
         "sodium",      # Encryption
-    ]
+    )
 
     def test_php_modules(self, nextcloud_api):
         """Serverinfo API should list all required PHP modules as loaded."""

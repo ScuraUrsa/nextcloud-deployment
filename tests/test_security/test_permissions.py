@@ -12,9 +12,9 @@ Environment variables:
 """
 
 import os
+
 import pytest
 import requests
-
 
 pytestmark = pytest.mark.security
 
@@ -59,7 +59,7 @@ class TestPermissions:
         )
 
         # Also check the general 'installed' and error fields
-        if "error" in data and data["error"]:
+        if data.get("error"):
             error_msg = str(data.get("error", "")).lower()
             assert "config" not in error_msg or "readable" not in error_msg, (
                 f"status.php reports a config-related error: {data['error']}"
