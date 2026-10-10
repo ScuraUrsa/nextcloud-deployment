@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from ..utils.lago_api import LagoAPI, LagoAPIError
 from ..utils.data_generators import generate_test_user_data
-
+from ..utils.lago_api import LagoAPI, LagoAPIError
 
 pytestmark = pytest.mark.billing
 

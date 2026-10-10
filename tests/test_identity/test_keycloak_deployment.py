@@ -14,7 +14,6 @@ import pytest
 
 from ..utils.keycloak_api import KeycloakAPI, KeycloakAPIError
 
-
 pytestmark = pytest.mark.identity
 
 

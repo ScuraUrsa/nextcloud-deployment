@@ -4,8 +4,6 @@ Custom assertion helpers for Nextcloud deployment tests.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
-
 from .nextcloud_api import NextcloudAPI, WebDAVResponse
 
 

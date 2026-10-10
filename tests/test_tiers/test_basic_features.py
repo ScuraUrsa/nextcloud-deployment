@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import pytest
 
+from ..utils.data_generators import (
+    generate_random_file,
+    generate_test_filename,
+    generate_test_user_data,
+)
 from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
-from ..utils.data_generators import generate_test_user_data, generate_random_file, generate_test_filename
-
 
 pytestmark = pytest.mark.tiers
 
@@ -53,8 +56,9 @@ class TestBasicFeatures:
                 pytest.fail(f"Failed to add user to nc-basic group: {exc}")
 
         # Create a session authenticated as the basic user for WebDAV
-        import requests
         import base64
+
+        import requests
 
         user_session = requests.Session()
         auth_raw = f"{username}:{password}"
@@ -169,8 +173,9 @@ class TestBasicFeatures:
             pytest.skip("Cannot list apps — skipping Talk restriction test")
 
         # Try to access Talk API as the basic user
-        import requests
         import base64
+
+        import requests
 
         user_session = requests.Session()
         auth_raw = f"{username}:{password}"

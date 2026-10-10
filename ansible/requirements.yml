@@ -6,6 +6,9 @@ collections:
     version: ">=3.0.0"
   - name: community.docker
     version: ">=3.0.0"
+  # MySQL modules (formerly community.mysql, which now just redirects here)
+  - name: ansible.mysql
+    version: ">=4.2.1"
   - name: ansible.posix
     version: ">=1.5.0"
 

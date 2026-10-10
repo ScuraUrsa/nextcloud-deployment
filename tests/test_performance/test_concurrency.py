@@ -11,12 +11,13 @@ Environment variables:
     NEXTCLOUD_ADMIN_PASS   - Admin password
 """
 
+import contextlib
 import os
 import uuid
-import pytest
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import pytest
+import requests
 
 pytestmark = pytest.mark.performance
 
@@ -53,7 +54,7 @@ def _upload_one(filename, content):
             timeout=30,
         )
         return (filename, resp.status_code, None)
-    except Exception as exc:
+    except requests.RequestException as exc:
         return (filename, None, str(exc))
 
 
@@ -86,10 +87,8 @@ class TestConcurrency:
 
         # Cleanup: delete all uploaded files
         for filename, _, _ in results:
-            try:
+            with contextlib.suppress(requests.RequestException):  # best-effort cleanup
                 requests.delete(_dav_url(filename), auth=_auth(), timeout=30)
-            except Exception:
-                pass
 
         # Verify all uploads succeeded
         failures = [

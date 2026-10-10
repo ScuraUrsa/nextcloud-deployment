@@ -11,11 +11,12 @@ Environment variables:
     NEXTCLOUD_ADMIN_PASS   - Admin password
 """
 
+import contextlib
 import os
 import uuid
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -136,10 +137,8 @@ def board(admin_user, unique_suffix):
     board_id = ocs.get("data", {}).get("id")
     assert board_id, f"Failed to create board: {result}"
     yield board_id
-    try:
+    with contextlib.suppress(requests.RequestException):  # best-effort cleanup
         _delete_board(board_id)
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------

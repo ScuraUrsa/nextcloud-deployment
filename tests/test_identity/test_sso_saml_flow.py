@@ -10,12 +10,12 @@ All tests are marked @pytest.mark.identity.
 
 from __future__ import annotations
 
-import pytest
-import requests
 from urllib.parse import urljoin
 
-from ..utils.keycloak_api import KeycloakAPI
+import pytest
+import requests
 
+from ..utils.keycloak_api import KeycloakAPI
 
 pytestmark = pytest.mark.identity
 

@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import os
 import uuid
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -65,7 +65,6 @@ def _webdav_delete(path):
         resp.raise_for_status()
     except requests.HTTPError:
         pass  # File may have been quarantined/deleted by AV
-    return
 
 
 # The EICAR test file — a harmless string that all AV scanners recognize as malware

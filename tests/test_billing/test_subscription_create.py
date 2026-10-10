@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from ..utils.lago_api import LagoAPI, LagoAPIError, LagoPlan, LagoSubscription
 from ..utils.data_generators import generate_test_user_data
-
+from ..utils.lago_api import LagoAPI, LagoAPIError
 
 pytestmark = pytest.mark.billing
 
@@ -65,7 +64,7 @@ class TestSubscriptionCreate:
         try:
             fetched = lago_api.get_subscription(f"sub-{customer_id}")
             assert fetched.lago_id == subscription.lago_id, (
-                f"Fetched subscription lago_id mismatch"
+                "Fetched subscription lago_id mismatch"
             )
             assert fetched.status in ("active", "pending"), (
                 f"Subscription status is '{fetched.status}', expected 'active' or 'pending'"

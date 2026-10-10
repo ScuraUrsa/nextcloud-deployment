@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
 from ..utils.data_generators import generate_test_user_data
-
+from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
 
 pytestmark = pytest.mark.identity
 

@@ -9,14 +9,20 @@ on:
 jobs:
   lint-ansible:
     runs-on: ubuntu-latest
+    env:
+      # ansible/ansible.cfg (roles_path = roles) is not read when running from
+      # the repository root, so point Ansible at the roles explicitly.
+      ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install linting tools
-        run: pip install ansible-lint yamllint
+        run: pip install ansible-core==2.21.5 ansible-lint==26.9.0 yamllint==1.38.0
+      - name: Install collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
       - name: Run ansible-lint
         run: ansible-lint ansible/playbooks/*.yml ansible/roles/*/tasks/*.yml
       - name: Run yamllint
@@ -30,19 +36,21 @@ jobs:
   lint-python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: pip install ruff mypy bandit
+        # Test requirements give mypy the pytest/requests type information.
+        run: pip install ruff==0.17.0 mypy==2.4.0 bandit==1.9.4 -r tests/requirements-test.txt
       - name: Run ruff
         run: ruff check tests/
       - name: Run mypy
-        run: mypy --strict tests/
+        # Strictness is configured per module in mypy.ini.
+        run: mypy tests/
       - name: Run bandit
-        run: bandit -r tests/ -c bandit.yaml || true
+        run: bandit -r tests/ -c bandit.yaml
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -50,9 +58,9 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test dependencies
@@ -72,9 +80,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install Ansible

@@ -23,7 +23,8 @@ pre-commit install
 ## Code Quality Standards
 
 ### Python
-- All code must pass `ruff`, `mypy --strict`, and `bandit` with zero errors
+- All code must pass `ruff check tests/`, `mypy tests/` (strictness configured in `mypy.ini`), and `bandit -r tests/ -c bandit.yaml` with zero errors
+- Tests that need a running Nextcloud/Keycloak/Lago stack are skipped automatically when it is unreachable (see `tests/conftest.py`); offline tests live in `tests/unit/`
 - Type hints required on all function signatures
 - Docstrings required on all public functions
 - Tests must be self-contained and idempotent

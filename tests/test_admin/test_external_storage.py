@@ -11,15 +11,20 @@ All tests are self-contained, idempotent, and marked @pytest.mark.admin.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Temp directory on the Nextcloud server under test (not on the machine running pytest).
+_REMOTE_TMP_DIR = "/tmp"  # nosec B108
+
 
 def _auth():
     return (os.environ["NEXTCLOUD_ADMIN_USER"], os.environ["NEXTCLOUD_ADMIN_PASS"])
@@ -257,7 +262,7 @@ def test_file_through_mount(unique_suffix):
         "backend": "local",
         "authMechanism": "password::password",
         "backendOptions": {
-            "datadir": f"/tmp/nc_external_test_{unique_suffix}",
+            "datadir": f"{_REMOTE_TMP_DIR}/nc_external_test_{unique_suffix}",
         },
         "priority": 128,
         "applicable": {
@@ -318,12 +323,10 @@ def test_file_through_mount(unique_suffix):
 
     finally:
         if mount_id:
-            try:
+            with contextlib.suppress(requests.RequestException):  # best-effort cleanup
                 requests.delete(
                     f"{mounts_url}/{mount_id}",
                     auth=_auth(),
                     headers={"Accept": "application/json"},
                     timeout=30,
                 )
-            except Exception:
-                pass

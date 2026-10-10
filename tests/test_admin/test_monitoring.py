@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import os
 import uuid
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -125,19 +125,22 @@ def test_prometheus_metrics(unique_suffix):
             for app in apps_list:
                 if isinstance(app, dict):
                     app_id = app.get("id", "")
-                    if "metrics" in app_id.lower() or "prometheus" in app_id.lower():
-                        if app.get("active", False):
-                            metrics_enabled = True
-                            break
+                    is_metrics_app = "metrics" in app_id.lower() or "prometheus" in app_id.lower()
+                    if is_metrics_app and app.get("active", False):
+                        metrics_enabled = True
+                        break
 
         # Also check if serverinfo exposes metrics
         if not metrics_enabled:
             for app in apps_list:
-                if isinstance(app, dict) and "serverinfo" in app.get("id", ""):
-                    if app.get("active", False):
-                        # serverinfo may have a metrics endpoint
-                        metrics_enabled = True
-                        break
+                if (
+                    isinstance(app, dict)
+                    and "serverinfo" in app.get("id", "")
+                    and app.get("active", False)
+                ):
+                    # serverinfo may have a metrics endpoint
+                    metrics_enabled = True
+                    break
 
         if not metrics_enabled:
             pytest.skip("No metrics/prometheus app is enabled — skipping")

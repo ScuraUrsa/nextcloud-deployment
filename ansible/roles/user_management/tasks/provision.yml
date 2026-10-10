@@ -9,7 +9,7 @@
 # 1. Read CSV manifest file
 # -------------------------------------------------------------------
 - name: Read user manifest CSV
-  ansible.builtin.read_csv:
+  community.general.read_csv:
     path: "{{ user_manifest_file }}"
     fieldnames: "{{ user_csv_columns }}"
     delimiter: ","
@@ -194,7 +194,7 @@
 
     # --- 4f. Optionally send welcome email ---
     - name: "Send welcome email to '{{ _user.email }}'"
-      ansible.builtin.mail:
+      community.general.mail:
         subject: "Welcome to Nextcloud — Your Account is Ready"
         body: |
           Hello {{ _user.displayname | default(_user.username) }},

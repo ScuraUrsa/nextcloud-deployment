@@ -1,29 +1,29 @@
 ---
 # handlers/main.yml — service restart/reload handlers for monitoring role
 
-- name: restart postgres_exporter
+- name: Restart postgres_exporter
   ansible.builtin.systemd:
     name: postgres_exporter
     state: restarted
     daemon_reload: true
-  listen: restart postgres_exporter
+  listen: Restart postgres_exporter
 
-- name: restart redis_exporter
+- name: Restart redis_exporter
   ansible.builtin.systemd:
     name: redis_exporter
     state: restarted
     daemon_reload: true
-  listen: restart redis_exporter
+  listen: Restart redis_exporter
 
-- name: restart nextcloud_exporter
+- name: Restart nextcloud_exporter
   ansible.builtin.systemd:
     name: nextcloud_exporter
     state: restarted
     daemon_reload: true
-  listen: restart nextcloud_exporter
+  listen: Restart nextcloud_exporter
 
-- name: reload prometheus
+- name: Reload prometheus
   ansible.builtin.systemd:
     name: prometheus
     state: reloaded
-  listen: reload prometheus
+  listen: Reload prometheus

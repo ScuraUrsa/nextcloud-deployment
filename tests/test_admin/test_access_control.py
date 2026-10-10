@@ -10,11 +10,12 @@ All tests are self-contained, idempotent, and marked @pytest.mark.admin.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
+
 import pytest
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -101,7 +102,7 @@ def _create_test_user(unique_suffix):
     display_name = f"ACL Test User {unique_suffix}"
     email = f"{username}@test.example.com"
 
-    result = _ocs_post("cloud/users", data={
+    _ocs_post("cloud/users", data={
         "userid": username,
         "password": password,
         "displayName": display_name,
@@ -112,10 +113,8 @@ def _create_test_user(unique_suffix):
 
 def _delete_test_user(username):
     """Delete a test user."""
-    try:
+    with contextlib.suppress(requests.RequestException):  # best-effort cleanup
         _ocs_delete(f"cloud/users/{username}")
-    except Exception:
-        pass
 
 
 def _user_auth(username, password):

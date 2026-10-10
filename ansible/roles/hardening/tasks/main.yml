@@ -24,7 +24,7 @@
     mode: "0644"
   when: fail2ban_enabled | bool
   tags: [fail2ban, config]
-  notify: restart fail2ban
+  notify: Restart fail2ban
 
 - name: Deploy Nginx auth fail2ban filter
   ansible.builtin.template:
@@ -35,7 +35,7 @@
     mode: "0644"
   when: fail2ban_enabled | bool
   tags: [fail2ban, config]
-  notify: restart fail2ban
+  notify: Restart fail2ban
 
 - name: Deploy Keycloak fail2ban filter
   ansible.builtin.template:
@@ -46,7 +46,7 @@
     mode: "0644"
   when: fail2ban_enabled | bool
   tags: [fail2ban, config]
-  notify: restart fail2ban
+  notify: Restart fail2ban
 
 - name: Deploy fail2ban jail.local with all jails
   ansible.builtin.template:
@@ -57,7 +57,7 @@
     mode: "0644"
   when: fail2ban_enabled | bool
   tags: [fail2ban, config]
-  notify: restart fail2ban
+  notify: Restart fail2ban
 
 - name: Enable and start fail2ban service
   ansible.builtin.systemd:
@@ -88,7 +88,7 @@
     mode: "0640"
   when: auditd_enabled | bool
   tags: [auditd, config]
-  notify: restart auditd
+  notify: Restart auditd
 
 - name: Enable and start auditd service
   ansible.builtin.systemd:

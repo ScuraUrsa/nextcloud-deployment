@@ -5,10 +5,7 @@ Test data generators for Nextcloud deployment tests.
 from __future__ import annotations
 
 import os
-import random
-import string
 import uuid
-from typing import Dict
 
 
 def generate_random_file(size_bytes: int) -> bytes:
@@ -16,7 +13,7 @@ def generate_random_file(size_bytes: int) -> bytes:
     return os.urandom(size_bytes)
 
 
-def generate_test_user_data(prefix: str = "testuser") -> Dict[str, str]:
+def generate_test_user_data(prefix: str = "testuser") -> dict[str, str]:
     """Generate random test user credentials and profile data."""
     suffix = uuid.uuid4().hex[:8]
     username = f"{prefix}_{suffix}"

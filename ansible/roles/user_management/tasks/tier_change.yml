@@ -8,7 +8,7 @@
 # 1. Read tier change manifest
 # -------------------------------------------------------------------
 - name: Read tier change manifest
-  ansible.builtin.read_csv:
+  community.general.read_csv:
     path: "{{ user_tier_change_manifest }}"
     fieldnames:
       - username

@@ -166,7 +166,7 @@
     mode: "0644"
   register: _pg_exp_service
   changed_when: "_pg_exp_service.changed"
-  notify: restart postgres_exporter
+  notify: Restart postgres_exporter
   tags: [monitoring, exporters, postgres_exporter, systemd]
 
 - name: Deploy redis_exporter systemd service
@@ -178,7 +178,7 @@
     mode: "0644"
   register: _redis_exp_service
   changed_when: "_redis_exp_service.changed"
-  notify: restart redis_exporter
+  notify: Restart redis_exporter
   tags: [monitoring, exporters, redis_exporter, systemd]
 
 - name: Deploy nextcloud-exporter systemd service
@@ -190,7 +190,7 @@
     mode: "0644"
   register: _nc_exp_service
   changed_when: "_nc_exp_service.changed"
-  notify: restart nextcloud_exporter
+  notify: Restart nextcloud_exporter
   tags: [monitoring, exporters, nextcloud_exporter, systemd]
 
 - name: Reload systemd daemon after deploying exporter units
@@ -221,7 +221,7 @@
     mode: "0640"
   register: _prom_config
   changed_when: "_prom_config.changed"
-  notify: reload prometheus
+  notify: Reload prometheus
   tags: [monitoring, prometheus, config]
 
 - name: Deploy alerting rules file
@@ -233,7 +233,7 @@
     mode: "0640"
   register: _prom_alerts
   changed_when: "_prom_alerts.changed"
-  notify: reload prometheus
+  notify: Reload prometheus
   tags: [monitoring, prometheus, alerts]
 
 # ===================================================================

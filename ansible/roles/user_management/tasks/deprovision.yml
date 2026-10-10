@@ -8,7 +8,7 @@
 # 1. Read deprovision manifest
 # -------------------------------------------------------------------
 - name: Read deprovision manifest
-  ansible.builtin.read_csv:
+  community.general.read_csv:
     path: "{{ user_deprovision_manifest }}"
     fieldnames: "username"
     delimiter: ","
@@ -152,8 +152,10 @@
       register: _nc_data_dir
       tags: [user_management, deprovision, nextcloud, archive]
 
+    # tar is used to *create* an archive here; ansible-lint's suggestion
+    # (unarchive) only extracts, so the rule does not apply.
     - name: "Archive user '{{ _deprov_user.username }}' data"
-      ansible.builtin.command:
+      ansible.builtin.command:  # noqa: command-instead-of-module
         cmd: >-
           tar -czf {{ user_deprovision_archive_dir }}/{{ _deprov_user.username }}-{{ ansible_date_time.epoch }}.tar.gz
           -C {{ nextcloud_data_dir | default('/data/nextcloud') }} {{ _deprov_user.username }}

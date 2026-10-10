@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
 from ..utils.data_generators import generate_test_user_data
-
+from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
 
 pytestmark = pytest.mark.tiers
 
@@ -107,8 +106,9 @@ class TestTierUpgrade:
                 else []
             )
             if "spreed" in app_list:
-                import requests
                 import base64
+
+                import requests
 
                 user_session = requests.Session()
                 auth_raw = f"{username}:{password}"

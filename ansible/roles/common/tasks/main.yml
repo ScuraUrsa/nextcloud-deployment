@@ -30,7 +30,7 @@
 # 3. Set timezone
 # -------------------------------------------------------------------
 - name: Set timezone to {{ common_timezone }}
-  ansible.builtin.timezone:
+  community.general.timezone:
     name: "{{ common_timezone }}"
   register: _common_tz
   changed_when: "_common_tz.diff.before != _common_tz.diff.after"

@@ -14,7 +14,6 @@ import pytest
 
 from ..utils.nextcloud_api import NextcloudAPI, NextcloudAPIError
 
-
 pytestmark = pytest.mark.tiers
 
 # Expected tier groups

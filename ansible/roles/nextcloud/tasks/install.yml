@@ -56,7 +56,7 @@
 
 - name: Verify existing tarball checksum
   ansible.builtin.shell:
-    cmd: "sha256sum {{ nextcloud_download_archive }} | cut -d' ' -f1"
+    cmd: "set -o pipefail && sha256sum {{ nextcloud_download_archive }} | cut -d' ' -f1"
     executable: /bin/bash
   register: _nc_actual_hash
   changed_when: false
