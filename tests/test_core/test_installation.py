@@ -188,27 +188,29 @@ class TestCronConfigured:
     """Verify system cron is configured and has executed recently."""
 
     def test_cron_configured(self, nextcloud_api):
-        """status.php should report a recent cron execution timestamp."""
+        """Background jobs run from system cron, and cron ran in the last day.
+
+        status.php does not report cron; the admin-only app config API does
+        (core/backgroundjobs_mode and core/lastcron).
+        """
         api = nextcloud_api
-        status = _status_php(api["session"], api["base_url"])
+        session = api["session"]
+        base_url = api["base_url"]
+        config = "/ocs/v2.php/apps/provisioning_api/api/v1/config/apps/core/"
 
-        # Check cron mode
-        cron_mode = status.get("cron", "")
-        assert cron_mode == "cron", (
-            f"Expected cron mode 'cron', got '{cron_mode}'. "
-            "System cron (not AJAX) should be configured."
+        try:
+            mode = _ocs_get(session, base_url, config + "backgroundjobs_mode")["ocs"]["data"]["data"]
+            last_cron = _ocs_get(session, base_url, config + "lastcron")["ocs"]["data"]["data"]
+        except (requests.RequestException, json.JSONDecodeError, KeyError) as exc:
+            pytest.fail(f"Cannot read cron settings from the app config API: {exc}")
+
+        assert mode == "cron", (
+            f"Expected cron mode 'cron', got '{mode}'. System cron (not AJAX) should be configured."
         )
+        assert last_cron, "No last cron timestamp found. Cron may never have executed."
 
-        # Check last cron execution
-        last_cron = status.get("lastcron", None)
-        assert last_cron is not None, (
-            "No last cron timestamp found. Cron may never have executed."
-        )
-
-        # lastcron is a Unix timestamp; verify it's recent (within 24 hours)
         import time
-        now = time.time()
-        age_seconds = now - int(last_cron)
+        age_seconds = time.time() - int(last_cron)
         assert age_seconds < 86400, (
             f"Last cron execution was {age_seconds:.0f} seconds ago "
             f"({age_seconds / 3600:.1f} hours). Expected within 24 hours."
