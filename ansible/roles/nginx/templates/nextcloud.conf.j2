@@ -38,7 +38,7 @@ server {
     ssl_certificate_key {{ nginx_ssl_certificate_key }};
 
     ssl_protocols {{ nginx_ssl_protocols }};
-    ssl_ciphers {{ nginx_ssl_ciphers }};
+    ssl_ciphers {{ nginx_ssl_ciphers | replace(" ", "") }};
     ssl_prefer_server_ciphers on;
 
     ssl_session_cache   {{ nginx_ssl_session_cache }};
