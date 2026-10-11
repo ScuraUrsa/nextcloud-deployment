@@ -15,7 +15,8 @@ nextcloud_admin_pass: "{{ vault_nextcloud_admin_pass }}"
 
 # ---- Database (PostgreSQL) ----
 nextcloud_db_type: "pgsql"
-nextcloud_db_host: "localhost:/var/run/postgresql/.s.PGSQL.5432"
+# TCP to localhost (pg_hba.conf allows md5 from 127.0.0.1/::1)
+nextcloud_db_host: "localhost"
 nextcloud_db_name: "{{ postgresql_db | default('nextcloud') }}"
 nextcloud_db_user: "{{ postgresql_user | default('nextcloud') }}"
 nextcloud_db_password: "{{ vault_postgresql_password }}"
@@ -109,6 +110,8 @@ nextcloud_app_paths:
   - "{{ nextcloud_web_root }}/apps"
   - "{{ nextcloud_web_root }}/apps-extra"
   - "{{ nextcloud_web_root }}/custom-apps"
+# The one writable app path: app-store installs land here, never in the core apps/ dir
+nextcloud_app_install_path: "{{ nextcloud_web_root }}/custom-apps"
 
 # ---- Integrity Check ----
 nextcloud_integrity_check_disabled: false
@@ -210,6 +213,16 @@ nextcloud_tiers:
       - files_pdfviewer         # PDF viewer
       - extract                 # Archive extraction
       - metadata                # Metadata editor
+
+# ---- App enabling ----
+# true:  enable tier apps only for the nc-basic/nc-pro/nc-enterprise groups (hosting setup)
+# false: enable every app in nextcloud_apps for all users (single-person / small instance)
+nextcloud_app_tier_gating: true
+
+# ---- Talk ----
+# Write talk_turn_servers/talk_stun_servers (turn.<domain>) into the config.
+# Turn off when no coturn server exists (the talk role is not deployed).
+nextcloud_talk_configure_turn: true
 
 # ---- Admin Group ----
 nextcloud_admin_group: "nc-admin"

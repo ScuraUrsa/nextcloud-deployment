@@ -3,27 +3,12 @@
 # Configure trusted domains, Redis, background jobs, etc.
 
 # -------------------------------------------------------------------
-# 1. Deploy config.php from Jinja2 template
-# -------------------------------------------------------------------
-- name: Deploy Nextcloud config.php
-  ansible.builtin.template:
-    src: config.php.j2
-    dest: "{{ nextcloud_web_root }}/config/config.php"
-    owner: "www-data"
-    group: "www-data"
-    mode: "0640"
-  register: _nc_config
-  changed_when: "_nc_config.changed"
-  failed_when:
-    - _nc_config is failed
-    - _nc_config.rc | default(0) != 0
-
-# -------------------------------------------------------------------
-# 2. Check if Nextcloud is already installed
+# 1. Check if Nextcloud is already installed
+#    (`occ status` exits 0 either way; read the installed flag)
 # -------------------------------------------------------------------
 - name: Check if Nextcloud is already installed
   ansible.builtin.command:
-    cmd: "php occ status --no-warnings"
+    cmd: "php occ status --output=json --no-warnings"
     chdir: "{{ nextcloud_web_root }}"
   become: true
   become_user: "www-data"
@@ -31,8 +16,16 @@
   changed_when: false
   failed_when: false
 
+- name: Read installed flag
+  ansible.builtin.set_fact:
+    _nc_installed: >-
+      {{ (_nc_status.stdout | default('') | regex_search('\{.*\}') | default('{}', true)
+          | from_json).installed | default(false) | bool }}
+
 # -------------------------------------------------------------------
-# 3. Run occ maintenance:install (only if not installed)
+# 2. Run occ maintenance:install (only if not installed).
+#    It writes config/config.php with the instance id, secrets, DB credentials,
+#    'installed' and 'version'; Ansible never templates config.php itself.
 # -------------------------------------------------------------------
 - name: Run Nextcloud maintenance:install
   ansible.builtin.command:
@@ -51,12 +44,25 @@
   become_user: "www-data"
   register: _nc_install
   changed_when: "_nc_install.rc == 0"
-  failed_when:
-    - _nc_install is failed
-    - _nc_install.rc | default(1) != 0
-    - "'already installed' not in _nc_install.stderr | default('')"
   no_log: true
-  when: _nc_status.rc != 0
+  when: not _nc_installed | bool
+
+- name: Show maintenance:install result (secrets are not in this output)
+  ansible.builtin.debug:
+    msg: "{{ _nc_install.stdout_lines | default([]) }}"
+  when: not _nc_installed | bool
+
+# -------------------------------------------------------------------
+# 3. Deploy the Ansible-managed config overlay (config/ansible.config.php)
+# -------------------------------------------------------------------
+- name: Deploy Nextcloud ansible.config.php
+  ansible.builtin.template:
+    src: ansible.config.php.j2
+    dest: "{{ nextcloud_web_root }}/config/ansible.config.php"
+    owner: "www-data"
+    group: "www-data"
+    mode: "0640"
+  register: _nc_config
 
 # -------------------------------------------------------------------
 # 4. Set trusted domains via occ
