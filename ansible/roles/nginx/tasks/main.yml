@@ -41,7 +41,7 @@
     state: directory
     owner: root
     group: root
-    mode: "0750"
+    mode: "0755"  # public cert must be readable (clients pin it); the key file is 0600
   when: nginx_tls_mode == 'selfsigned'
   tags: [nginx, ssl]
 
