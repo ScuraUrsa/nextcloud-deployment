@@ -25,6 +25,7 @@ nextcloud_apps:
   - calendar
   - contacts
   - spreed
+  - serverinfo   # system/DB/cron info for admins and the smoke tests
 
 # Database (sized for 4 GB RAM)
 postgresql_version: 16
