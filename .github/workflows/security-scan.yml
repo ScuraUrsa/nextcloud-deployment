@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   nextcloud-security-scan:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
             });
 
   ssl-check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +117,7 @@ jobs:
             });
 
   dependency-scan:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check-lago:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     environment: production
     steps:
       - name: Pre-flight — check LAGO_API_URL is set and reachable
@@ -32,7 +32,7 @@ jobs:
           echo "Lago API healthy (HTTP $STATUS)"
 
   check-btcpay:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     environment: production
     steps:
       - name: Pre-flight — check BTCPAY_DOMAIN is set and reachable
@@ -54,7 +54,7 @@ jobs:
           echo "BTCPay Server healthy (HTTP $STATUS)"
 
   check-invoiceplane:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     environment: production
     steps:
       - name: Pre-flight — check INVOICEPLANE_DOMAIN is set and reachable
@@ -76,7 +76,7 @@ jobs:
           echo "InvoicePlane reachable (HTTP $STATUS)"
 
   check-webhooks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     environment: production
     steps:
       - name: Check recent webhook deliveries
@@ -90,7 +90,7 @@ jobs:
   alert-on-failure:
     if: failure()
     needs: [check-lago, check-btcpay, check-invoiceplane, check-webhooks]
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     steps:
       - name: Create alert issue
         uses: actions/github-script@v7
