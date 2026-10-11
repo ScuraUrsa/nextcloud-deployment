@@ -74,38 +74,33 @@ class TestInvalidLogin:
     """Verify that invalid credentials are rejected."""
 
     def test_invalid_login(self, nextcloud_url):
-        """Login with wrong password should be rejected."""
+        """Wrong credentials get 401 from the API and no session from the login form.
+
+        Nextcloud renders the login error with JavaScript, so the form check
+        looks at where the browser ends up, not at the error text.
+        """
         base_url = nextcloud_url.rstrip("/")
+        wrong = ("admin", "DefinitelyWrongPassword123!@#")
+
+        resp = requests.get(
+            urljoin(base_url, "/ocs/v2.php/cloud/user"),
+            auth=wrong,
+            headers={"OCS-APIRequest": "true", "Accept": "application/json"},
+            timeout=30,
+        )
+        assert resp.status_code == 401, f"Expected 401 for wrong password, got {resp.status_code}"
 
         session = requests.Session()
         session.headers.update({"User-Agent": "Nextcloud-TestSuite/1.0"})
-
-        # Get CSRF token
-        login_page = urljoin(base_url, "/login")
-        resp = session.get(login_page, timeout=30)
+        resp = session.get(urljoin(base_url, "/login"), timeout=30)
         resp.raise_for_status()
         token = _extract_requesttoken(resp.text)
-
-        # Attempt login with wrong password
-        login_data = {
-            "user": "admin",
-            "password": "DefinitelyWrongPassword123!@#",
-        }
+        login_data = {"user": wrong[0], "password": wrong[1]}
         if token:
             login_data["requesttoken"] = token
+        resp = session.post(urljoin(base_url, "/login"), data=login_data, timeout=30)
 
-        login_action = urljoin(base_url, "/login")
-        resp = session.post(login_action, data=login_data, timeout=30)
-
-        # Nextcloud returns 200 even on failed login, but the page contains
-        # an error message
-        assert "Invalid password" in resp.text or "Wrong password" in resp.text or \
-               "invalidpassword" in resp.text.lower() or \
-               "Login failed" in resp.text, (
-            "Expected login failure message, but none found in response"
-        )
-
-        # Verify we are NOT logged in
+        assert "/login" in resp.url, f"Expected to stay on the login page, ended on {resp.url}"
         assert not _is_logged_in(session, base_url), (
             "Session should not be authenticated after invalid login"
         )
@@ -147,25 +142,41 @@ class TestSessionPersistence:
 class TestLogout:
     """Verify that logout invalidates the session."""
 
-    def test_logout(self, nextcloud_api):
-        """After logout, the session should no longer be authenticated."""
-        api = nextcloud_api
-        session = api["session"]
-        base_url = api["base_url"]
+    def test_logout(self, nextcloud_url, admin_user, admin_pass):
+        """A browser-style session ends at logout.
 
-        # Verify we are logged in first
+        The shared API session uses HTTP basic auth, which stays valid by
+        design, so this test logs in through the form with its own session.
+        """
+        base_url = nextcloud_url.rstrip("/")
+        session = requests.Session()
+        session.headers.update({"User-Agent": "Nextcloud-TestSuite/1.0"})
+
+        resp = session.get(urljoin(base_url, "/login"), timeout=30)
+        resp.raise_for_status()
+        token = _extract_requesttoken(resp.text)
+        if not token:
+            pytest.skip("No request token on the login page")
+        session.post(
+            urljoin(base_url, "/login"),
+            data={"user": admin_user, "password": admin_pass, "requesttoken": token},
+            timeout=30,
+        )
         assert _is_logged_in(session, base_url), (
-            "Precondition failed: session is not authenticated before logout test"
+            "Precondition failed: form login did not create a session"
         )
 
-        # Perform logout
-        logout_url = urljoin(base_url, "/logout")
-        try:
-            session.get(logout_url, timeout=30, allow_redirects=True)
-        except requests.RequestException as exc:
-            pytest.fail(f"Logout request failed: {exc}")
+        # The logout link carries the current request token (CSRF protection).
+        page = session.get(urljoin(base_url, "/settings/user"), timeout=30)
+        logout_token = _extract_requesttoken(page.text)
+        assert logout_token, "No request token on an authenticated page"
+        session.get(
+            urljoin(base_url, "/logout"),
+            params={"requesttoken": logout_token},
+            timeout=30,
+            allow_redirects=True,
+        )
 
-        # After logout, the session should not be authenticated
         assert not _is_logged_in(session, base_url), (
             "Session is still authenticated after logout"
         )

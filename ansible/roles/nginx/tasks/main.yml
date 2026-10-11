@@ -35,6 +35,30 @@
   notify: Reload nginx
   tags: [nginx, ssl, dhparam]
 
+- name: Ensure self-signed certificate directory exists
+  ansible.builtin.file:
+    path: /etc/ssl/nextcloud
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"  # public cert must be readable (clients pin it); the key file is 0600
+  when: nginx_tls_mode == 'selfsigned'
+  tags: [nginx, ssl]
+
+- name: Generate self-signed certificate for {{ nginx_server_name }}
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes -newkey rsa:2048
+      -days {{ nginx_selfsigned_days }}
+      -subj "/CN={{ nginx_server_name }}"
+      -addext "subjectAltName={{ 'IP' if nginx_server_name is match('^[0-9.]+$') else 'DNS' }}:{{ nginx_server_name }}"
+      -keyout {{ nginx_ssl_certificate_key }}
+      -out {{ nginx_ssl_certificate }}
+    creates: "{{ nginx_ssl_certificate }}"
+  when: nginx_tls_mode == 'selfsigned'
+  notify: Reload nginx
+  tags: [nginx, ssl]
+
 - name: Deploy Nextcloud Nginx site configuration
   ansible.builtin.template:
     src: nextcloud.conf.j2
@@ -73,7 +97,7 @@
     --domain {{ nginx_server_name }}
     --rsa-key-size {{ nginx_certbot_rsa_key_size }}
     --staging
-  when: nginx_certbot_staging | bool
+  when: nginx_tls_mode == 'letsencrypt' and nginx_certbot_staging | bool
   register: certbot_staging_result
   changed_when: "'Congratulations' in certbot_staging_result.stdout"
   tags: [nginx, certbot, ssl]
@@ -85,7 +109,7 @@
     --email {{ nginx_certbot_email }}
     --domain {{ nginx_server_name }}
     --rsa-key-size {{ nginx_certbot_rsa_key_size }}
-  when: not (nginx_certbot_staging | bool)
+  when: nginx_tls_mode == 'letsencrypt' and not (nginx_certbot_staging | bool)
   register: certbot_prod_result
   changed_when: "'Congratulations' in certbot_prod_result.stdout"
   tags: [nginx, certbot, ssl]
@@ -95,6 +119,7 @@
     name: certbot.timer
     enabled: true
     state: started
+  when: nginx_tls_mode == 'letsencrypt'
   tags: [nginx, certbot, renewal]
 
 - name: Enable and start nginx service

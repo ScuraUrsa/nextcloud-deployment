@@ -38,15 +38,17 @@ server {
     ssl_certificate_key {{ nginx_ssl_certificate_key }};
 
     ssl_protocols {{ nginx_ssl_protocols }};
-    ssl_ciphers {{ nginx_ssl_ciphers }};
+    ssl_ciphers {{ nginx_ssl_ciphers | replace(" ", "") }};
     ssl_prefer_server_ciphers on;
 
     ssl_session_cache   {{ nginx_ssl_session_cache }};
     ssl_session_timeout {{ nginx_ssl_session_timeout }};
     ssl_session_tickets {{ nginx_ssl_session_tickets }};
 
+{% if nginx_tls_mode != 'selfsigned' %}
     ssl_stapling {{ nginx_ssl_stapling }};
     ssl_stapling_verify {{ nginx_ssl_stapling_verify }};
+{% endif %}
     resolver {{ nginx_resolver }} valid=300s;
     resolver_timeout {{ nginx_resolver_timeout }};
 
@@ -88,8 +90,19 @@ server {
     gzip_types {{ nginx_gzip_types }};
     gzip_disable "msie6";
 
+    # Nextcloud 28+ ships ES modules (.mjs); nginx's mime.types does not know them
+    include mime.types;
+    types {
+        text/javascript mjs;
+        application/wasm wasm;
+    }
+
     # ---- Nextcloud Root ----
     root /var/www/nextcloud;
+
+    # Directory requests (e.g. /apps/dashboard/, a real directory under the web
+    # root) must fall through to the front controller instead of a 403 autoindex.
+    index index.php index.html /index.php$request_uri;
 
     # ---- .well-known Redirects (Nextcloud standard) ----
     location = /.well-known/carddav {
@@ -113,7 +126,7 @@ server {
 
     # ---- Static File Caching ----
     # Assets with aggressive caching (versioned filenames)
-    location ~* \.(?:css|js|woff2?|svg|gif|png|jpg|jpeg|ico|webp|avif)$ {
+    location ~* \.(?:css|js|mjs|woff2?|svg|gif|png|jpg|jpeg|ico|webp|avif|wasm)$ {
         try_files $uri /index.php$request_uri;
         expires 30d;
         add_header Cache-Control "public, immutable";

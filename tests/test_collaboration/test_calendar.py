@@ -13,7 +13,9 @@ Environment variables:
 import contextlib
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc  # datetime.UTC needs Python 3.11; Ubuntu 22.04 ships 3.10
 from xml.etree import ElementTree as ET
 
 import pytest

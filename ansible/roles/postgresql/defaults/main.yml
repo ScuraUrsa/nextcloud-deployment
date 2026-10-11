@@ -25,13 +25,13 @@ postgresql_random_page_cost: 1.1
 # WAL archiving for point-in-time recovery
 postgresql_wal_level: replica
 postgresql_archive_mode: true
-postgresql_archive_command: "test ! -f /var/lib/postgresql/16/main/wal_archive/%f && cp %p /var/lib/postgresql/16/main/wal_archive/%f"
+postgresql_archive_command: "test ! -f {{ postgresql_data_directory }}/wal_archive/%f && cp %p {{ postgresql_data_directory }}/wal_archive/%f"
 
 # Network — listen on localhost only (Nextcloud connects locally)
 postgresql_listen_addresses: localhost
 
 # Data directory (Ubuntu 24.04 default for PG 16)
-postgresql_data_directory: "/var/lib/postgresql/16/main"
+postgresql_data_directory: "/var/lib/postgresql/{{ postgresql_version }}/main"
 
 # pg_stat_statements extension for query monitoring
 postgresql_shared_preload_libraries: "pg_stat_statements"

@@ -41,6 +41,7 @@
     - _nc_basic_enable.rc | default(1) != 0
     - "'already enabled' not in _nc_basic_enable.stdout | default('')"
   ignore_errors: true
+  when: nextcloud_app_tier_gating | bool
 
 # -------------------------------------------------------------------
 # 3. Enable pro-tier apps for nc-pro and nc-enterprise groups
@@ -61,6 +62,7 @@
     - _nc_pro_enable.rc | default(1) != 0
     - "'already enabled' not in _nc_pro_enable.stdout | default('')"
   ignore_errors: true
+  when: nextcloud_app_tier_gating | bool
 
 # -------------------------------------------------------------------
 # 4. Enable enterprise-tier apps for nc-enterprise group only
@@ -81,6 +83,7 @@
     - _nc_ent_enable.rc | default(1) != 0
     - "'already enabled' not in _nc_ent_enable.stdout | default('')"
   ignore_errors: true
+  when: nextcloud_app_tier_gating | bool
 
 # -------------------------------------------------------------------
 # 5. Enable admin apps for nc-admin group
@@ -109,6 +112,22 @@
     - _nc_admin_enable.rc | default(1) != 0
     - "'already enabled' not in _nc_admin_enable.stdout | default('')"
   ignore_errors: true
+  when: nextcloud_app_tier_gating | bool
+
+# -------------------------------------------------------------------
+# 5b. Without tier gating: enable every listed app for all users
+# -------------------------------------------------------------------
+- name: Enable all listed apps for everyone (no tier gating)
+  ansible.builtin.command:
+    cmd: "php occ app:enable {{ item }}"
+    chdir: "{{ nextcloud_web_root }}"
+  become: true
+  become_user: "www-data"
+  loop: "{{ nextcloud_apps }}"
+  register: _nc_all_enable
+  changed_when: "'enabled' in _nc_all_enable.stdout | default('')"
+  failed_when: _nc_all_enable.rc != 0
+  when: not nextcloud_app_tier_gating | bool
 
 # -------------------------------------------------------------------
 # 6. Enable globally-available apps (no group restriction)

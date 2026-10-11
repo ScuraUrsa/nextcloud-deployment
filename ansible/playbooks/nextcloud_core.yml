@@ -1,0 +1,80 @@
+---
+# ============================================
+# Nextcloud "personal core" — single host
+# ============================================
+# Roles: common, postgresql, redis, php_fpm, nginx, nextcloud
+# Apps:  files (bundled), calendar, contacts, spreed (Talk, without TURN)
+# Not included: keycloak, elasticsearch, collabora, talk (coturn), billing,
+#               hardening, backup, monitoring.
+#
+# Run from a control node:
+#   ansible-playbook -i inventory/staging/hosts.yml playbooks/nextcloud_core.yml -e @~/nc-secrets.yml
+# Run on the target itself:
+#   ansible-playbook -i inventory/staging/hosts.yml -c local -l nextcloud-staging \
+#     playbooks/nextcloud_core.yml -e @~/nc-secrets.yml
+
+- name: Deploy Nextcloud personal core
+  hosts: nextcloud_servers
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    # The ADR (docs/distribution-selection.md) targets 24.04; the local VirtualBox
+    # base image is 22.04. The core roles pull PHP 8.3 (ondrej PPA) and PostgreSQL 16
+    # (PGDG) from upstream repos, so both releases work.
+    - name: Verify target is Ubuntu 22.04 or 24.04
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Ubuntu'
+          - ansible_distribution_version in ['22.04', '24.04']
+        fail_msg: >-
+          nextcloud_core targets Ubuntu 22.04/24.04 LTS.
+          Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+    - name: Check required secrets are set
+      ansible.builtin.assert:
+        that:
+          - vault_nextcloud_admin_pass is defined and vault_nextcloud_admin_pass | length >= 12
+          - vault_postgresql_password is defined and vault_postgresql_password | length >= 12
+        fail_msg: "Pass vault_nextcloud_admin_pass and vault_postgresql_password (-e @secrets.yml)"
+      no_log: true
+
+    - name: Install packages Ansible itself needs on the target
+      ansible.builtin.apt:
+        name:
+          - acl              # become_user www-data/postgres with unprivileged temp files
+          - python3-psycopg2 # community.postgresql modules
+        state: present
+        update_cache: true
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: postgresql
+      tags: [postgresql]
+    - role: redis
+      tags: [redis]
+    - role: php_fpm
+      tags: [php_fpm]
+    - role: nginx
+      tags: [nginx]
+    - role: nextcloud
+      tags: [nextcloud]
+
+  post_tasks:
+    - name: Nextcloud status
+      ansible.builtin.command:
+        cmd: "php occ status --output=json"
+        chdir: "{{ nextcloud_web_root }}"
+      become: true
+      become_user: www-data
+      register: _core_status
+      changed_when: false
+      tags: [always]
+
+    - name: Show status
+      ansible.builtin.debug:
+        msg:
+          - "Nextcloud: https://{{ nextcloud_domain }}/  (admin user: {{ nextcloud_admin_user }})"
+          - "{{ _core_status.stdout }}"
+      tags: [always]

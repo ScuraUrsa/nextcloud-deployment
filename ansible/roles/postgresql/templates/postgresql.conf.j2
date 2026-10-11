@@ -3,6 +3,17 @@
 # Based on official PostgreSQL 16 default config with Nextcloud-optimized overrides
 
 # -----------------------------------------------------------------------------
+# FILE LOCATIONS (Debian/Ubuntu cluster layout; pg_ctlcluster starts the server
+# with -D /etc/postgresql/<ver>/main, so the data directory must be set here)
+# -----------------------------------------------------------------------------
+
+data_directory = '{{ postgresql_data_directory }}'
+hba_file = '/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf'
+ident_file = '/etc/postgresql/{{ postgresql_version }}/main/pg_ident.conf'
+external_pid_file = '/var/run/postgresql/{{ postgresql_version }}-main.pid'
+unix_socket_directories = '/var/run/postgresql'
+
+# -----------------------------------------------------------------------------
 # CONNECTIONS AND AUTHENTICATION
 # -----------------------------------------------------------------------------
 

@@ -130,6 +130,22 @@ class NextcloudAPI:
         self.admin_pass = admin_pass
         self.session = requests.Session()
         self._auth_header = self._make_basic_auth_header(admin_user, admin_pass)
+        self._admin_session: requests.Session | None = None
+
+    def __getitem__(self, key: str) -> Any:
+        """Dict-style access used by the smoke tests: api["session"], api["base_url"].
+
+        ``api["session"]`` is a separate session authenticated as the admin, so the
+        explicit per-request auth headers on ``self.session`` stay untouched.
+        """
+        if key == "base_url":
+            return self.base_url
+        if key == "session":
+            if self._admin_session is None:
+                self._admin_session = requests.Session()
+                self._admin_session.auth = (self.admin_user, self.admin_pass)
+            return self._admin_session
+        raise KeyError(key)
 
     # -- helpers -----------------------------------------------------------
 

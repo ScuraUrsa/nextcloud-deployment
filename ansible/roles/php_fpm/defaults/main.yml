@@ -27,6 +27,8 @@ php_fpm_user: "www-data"
 php_fpm_group: "www-data"
 
 # PHP modules required by Nextcloud
+# (simplexml ships in php8.3-xml; sodium and openssl are built into php8.3-common,
+#  there are no separate packages for them)
 php_modules:
   - php8.3-fpm
   - php8.3-cli
@@ -35,7 +37,6 @@ php_modules:
   - php8.3-gd
   - php8.3-mbstring
   - php8.3-xml
-  - php8.3-simplexml
   - php8.3-zip
   - php8.3-bz2
   - php8.3-intl
@@ -47,8 +48,8 @@ php_modules:
   - php8.3-pgsql
   - php8.3-ldap
   - php8.3-imagick
-  - php8.3-sodium
-  - php8.3-openssl
 
 # Disabled functions for security
-php_disabled_functions: "exec,passthru,shell_exec,system,proc_open,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source"
+# Nextcloud itself needs curl_exec/curl_multi_exec (app store, federation), proc_open/exec
+# (previews, occ, Talk) and parse_ini_file, so they must stay enabled.
+php_disabled_functions: "passthru,show_source"

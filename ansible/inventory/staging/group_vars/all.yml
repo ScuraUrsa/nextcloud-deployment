@@ -1,0 +1,57 @@
+---
+# ============================================
+# Staging — "personal core" (playbooks/nextcloud_core.yml)
+# 4 GB RAM / 2 vCPU VM, reached by IP on the host-only network, no public DNS.
+# ============================================
+# Secrets are NOT in git. Pass them with -e @<file> (see docs/staging-core.md):
+#   vault_nextcloud_admin_pass, vault_postgresql_password
+
+# Core Nextcloud
+nextcloud_version: "30.0.2"
+nextcloud_domain: "{{ ansible_host }}"
+nextcloud_admin_user: admin
+nextcloud_admin_pass: "{{ vault_nextcloud_admin_pass }}"
+nextcloud_data_dir: "/data/nextcloud"
+nextcloud_web_root: "/var/www/nextcloud"
+nextcloud_trusted_domains:
+  - "{{ nextcloud_domain }}"
+  - "localhost"
+nextcloud_mail_domain: "localhost"
+
+# Personal instance: apps for everyone, no tier gating, no coturn yet
+nextcloud_app_tier_gating: false
+nextcloud_talk_configure_turn: false
+nextcloud_apps:
+  - calendar
+  - contacts
+  - spreed
+  - serverinfo   # system/DB/cron info for admins and the smoke tests
+
+# Database (sized for 4 GB RAM)
+postgresql_version: 16
+postgresql_db: nextcloud
+postgresql_user: nextcloud
+postgresql_password: "{{ vault_postgresql_password }}"
+nextcloud_db_password: "{{ vault_postgresql_password }}"
+postgresql_shared_buffers: "512MB"
+postgresql_effective_cache_size: "1536MB"
+postgresql_work_mem: "8MB"
+postgresql_maintenance_work_mem: "128MB"
+postgresql_max_connections: 50
+postgresql_archive_mode: false
+
+# Redis
+redis_maxmemory: "256mb"
+
+# PHP (sized for 4 GB RAM)
+php_version: "8.3"
+php_memory_limit: "512M"
+php_opcache_memory: 128
+php_fpm_pm: dynamic
+php_fpm_max_children: 8
+php_fpm_start_servers: 2
+php_fpm_min_spare_servers: 1
+php_fpm_max_spare_servers: 3
+
+# TLS: no public DNS name -> self-signed certificate for the IP
+nginx_tls_mode: selfsigned
