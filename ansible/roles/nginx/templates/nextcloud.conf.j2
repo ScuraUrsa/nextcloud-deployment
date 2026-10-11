@@ -100,6 +100,10 @@ server {
     # ---- Nextcloud Root ----
     root /var/www/nextcloud;
 
+    # Directory requests (e.g. /apps/dashboard/, a real directory under the web
+    # root) must fall through to the front controller instead of a 403 autoindex.
+    index index.php index.html /index.php$request_uri;
+
     # ---- .well-known Redirects (Nextcloud standard) ----
     location = /.well-known/carddav {
         return 301 $scheme://$host/remote.php/dav;
