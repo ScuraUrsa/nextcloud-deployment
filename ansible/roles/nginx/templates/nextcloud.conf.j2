@@ -45,8 +45,10 @@ server {
     ssl_session_timeout {{ nginx_ssl_session_timeout }};
     ssl_session_tickets {{ nginx_ssl_session_tickets }};
 
+{% if nginx_tls_mode != 'selfsigned' %}
     ssl_stapling {{ nginx_ssl_stapling }};
     ssl_stapling_verify {{ nginx_ssl_stapling_verify }};
+{% endif %}
     resolver {{ nginx_resolver }} valid=300s;
     resolver_timeout {{ nginx_resolver_timeout }};
 
@@ -88,6 +90,13 @@ server {
     gzip_types {{ nginx_gzip_types }};
     gzip_disable "msie6";
 
+    # Nextcloud 28+ ships ES modules (.mjs); nginx's mime.types does not know them
+    include mime.types;
+    types {
+        text/javascript mjs;
+        application/wasm wasm;
+    }
+
     # ---- Nextcloud Root ----
     root /var/www/nextcloud;
 
@@ -113,7 +122,7 @@ server {
 
     # ---- Static File Caching ----
     # Assets with aggressive caching (versioned filenames)
-    location ~* \.(?:css|js|woff2?|svg|gif|png|jpg|jpeg|ico|webp|avif)$ {
+    location ~* \.(?:css|js|mjs|woff2?|svg|gif|png|jpg|jpeg|ico|webp|avif|wasm)$ {
         try_files $uri /index.php$request_uri;
         expires 30d;
         add_header Cache-Control "public, immutable";

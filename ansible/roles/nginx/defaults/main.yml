@@ -4,9 +4,19 @@
 # Domain name for the Nextcloud server
 nginx_server_name: "{{ nextcloud_domain }}"
 
-# SSL/TLS certificate paths (Let's Encrypt)
-nginx_ssl_certificate: "/etc/letsencrypt/live/{{ nextcloud_domain }}/fullchain.pem"
-nginx_ssl_certificate_key: "/etc/letsencrypt/live/{{ nextcloud_domain }}/privkey.pem"
+# Certificate source:
+#   letsencrypt — certbot for a public DNS name (production)
+#   selfsigned  — locally generated certificate (staging / LAN-only hosts, IP addresses)
+nginx_tls_mode: "letsencrypt"
+
+# SSL/TLS certificate paths
+nginx_ssl_certificate: >-
+  {{ '/etc/ssl/nextcloud/fullchain.pem' if nginx_tls_mode == 'selfsigned'
+     else '/etc/letsencrypt/live/' ~ nextcloud_domain ~ '/fullchain.pem' }}
+nginx_ssl_certificate_key: >-
+  {{ '/etc/ssl/nextcloud/privkey.pem' if nginx_tls_mode == 'selfsigned'
+     else '/etc/letsencrypt/live/' ~ nextcloud_domain ~ '/privkey.pem' }}
+nginx_selfsigned_days: 825
 
 # TLS protocols — TLSv1.3 preferred, TLSv1.2 for compatibility
 nginx_ssl_protocols: "TLSv1.2 TLSv1.3"
@@ -26,7 +36,7 @@ nginx_ssl_session_tickets: "off"
 # OCSP stapling
 nginx_ssl_stapling: "on"
 nginx_ssl_stapling_verify: "on"
-nginx_resolver: "8.8.8.8 8.8.4.4 valid=300s"
+nginx_resolver: "8.8.8.8 8.8.4.4"
 nginx_resolver_timeout: "5s"
 
 # DH parameters (use 2048-bit for Mozilla Intermediate)
