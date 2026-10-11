@@ -29,6 +29,13 @@
     mode: "0750"
   changed_when: false
 
+- name: Add socket clients to the redis group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: redis
+    append: true
+  loop: "{{ redis_socket_clients }}"
+
 # -------------------------------------------------------------------
 # 3. Deploy redis.conf from template
 # -------------------------------------------------------------------
@@ -59,6 +66,10 @@
   failed_when:
     - _redis_service is failed
     - "'Could not find the requested service' in _redis_service.msg | default('')"
+
+# The socket only exists once the new redis.conf is live
+- name: Apply pending Redis restart before checking the socket
+  ansible.builtin.meta: flush_handlers
 
 # -------------------------------------------------------------------
 # 5. Verify Redis responds to PING via Unix socket

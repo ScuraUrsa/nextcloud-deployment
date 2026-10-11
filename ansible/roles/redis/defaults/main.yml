@@ -9,6 +9,9 @@ redis_maxmemory_policy: "allkeys-lru"
 redis_port: 0
 redis_socket: "/var/run/redis/redis-server.sock"
 redis_socket_perm: 660
+# Users added to the redis group so they can open the 0660 socket (PHP-FPM/occ run as www-data)
+redis_socket_clients:
+  - www-data
 
 # Persistence (RDB snapshots)
 redis_save: "900 1 300 10 60 10000"
