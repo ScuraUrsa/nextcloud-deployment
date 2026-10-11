@@ -14,7 +14,9 @@ All tests are marked @pytest.mark.core.
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc  # datetime.UTC needs Python 3.11; Ubuntu 22.04 ships 3.10
 from urllib.parse import urljoin
 
 import pytest

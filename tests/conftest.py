@@ -123,6 +123,31 @@ def nextcloud_api() -> NextcloudAPI:
 
 
 @pytest.fixture(scope="session")
+def nextcloud_url() -> str:
+    """Base URL of the Nextcloud under test."""
+    return os.environ.get("NEXTCLOUD_URL", "http://localhost:8080")
+
+
+@pytest.fixture(scope="session")
+def admin_user() -> str:
+    return os.environ.get("NEXTCLOUD_ADMIN_USER", "admin")
+
+
+@pytest.fixture(scope="session")
+def admin_pass() -> str:
+    return os.environ.get("NEXTCLOUD_ADMIN_PASS", "admin")
+
+
+@pytest.fixture(scope="session")
+def expected_version() -> str:
+    """Nextcloud version status.php must report (e.g. 30.0.2.2); skips when unset."""
+    version = os.environ.get("NEXTCLOUD_EXPECTED_VERSION", "")
+    if not version:
+        pytest.skip("NEXTCLOUD_EXPECTED_VERSION not set")
+    return version
+
+
+@pytest.fixture(scope="session")
 def keycloak_api() -> KeycloakAPI:
     """Keycloak API client, configured from environment variables."""
     base_url = os.environ.get("KEYCLOAK_URL", "http://localhost:8081")
