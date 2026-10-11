@@ -20,6 +20,9 @@
       - "postgresql-{{ postgresql_version }}"
       - "postgresql-client-{{ postgresql_version }}"
       - "postgresql-contrib"
+      # community.postgresql modules need psycopg2 on the target
+      - python3-psycopg2
+      - acl
     state: present
     update_cache: true
   tags: [postgresql, packages]
@@ -53,6 +56,9 @@
     mode: "0640"
   notify: Reload postgresql
   tags: [postgresql, config, security]
+
+- name: Apply the new PostgreSQL configuration now
+  ansible.builtin.meta: flush_handlers
 
 - name: Ensure PostgreSQL service is running and enabled
   ansible.builtin.systemd:
