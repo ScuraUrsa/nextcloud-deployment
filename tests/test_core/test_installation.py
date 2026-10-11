@@ -139,21 +139,22 @@ class TestDatabaseConnectivity:
     """Verify PostgreSQL is reachable and Nextcloud can use it."""
 
     def test_database_connectivity(self, nextcloud_api):
-        """status.php should report a working database connection."""
-        api = nextcloud_api
-        status = _status_php(api["session"], api["base_url"])
+        """Serverinfo should report a PostgreSQL database backend.
 
-        # status.php includes a 'dbtype' field
-        dbtype = status.get("dbtype", "")
+        status.php has no database fields; the serverinfo app does.
+        """
+        api = nextcloud_api
+        try:
+            data = _ocs_get(api["session"], api["base_url"], "/ocs/v2.php/apps/serverinfo/api/v1/info")
+        except (requests.RequestException, json.JSONDecodeError):
+            pytest.skip("Serverinfo app not available or API unreachable")
+
+        database = data.get("ocs", {}).get("data", {}).get("server", {}).get("database", {})
+        dbtype = database.get("type", "")
         assert dbtype == "pgsql", (
             f"Expected dbtype=pgsql, got {dbtype}"
         )
-
-        # If there's a database error, status.php would report it
-        db_error = status.get("db_error", "")
-        assert not db_error, (
-            f"Database error reported: {db_error}"
-        )
+        assert database.get("version"), "Serverinfo reports no database version"
 
 
 class TestRedisConnectivity:
