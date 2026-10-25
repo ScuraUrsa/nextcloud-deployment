@@ -1,5 +1,11 @@
 # Staging: Nextcloud "personal core"
 
+> **Retired 2026-10-25 (Filip):** the `nextcloud-staging` VirtualBox VM was deleted. Nextcloud stage now runs in k3s on
+> the homelab worker `lab-w01` (namespace `nextcloud-stage`, https://nextcloud-stage-1.tail5c846a.ts.net, tailnet only),
+> deployed by hand from manifests, not from this repo. Details: hermes-workspace `infra/hosts/lab-w01.md`
+> (https://github.com/ScuraUrsa/hermes-workspace/blob/claude/project-thread-5906j7/infra/hosts/lab-w01.md).
+> The inventory `ansible/inventory/staging/` below no longer has a target.
+
 First real deployment of this repo (2026-10-11): a single VirtualBox VM on Filip's laptop.
 
 | | |
