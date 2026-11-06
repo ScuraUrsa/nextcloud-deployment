@@ -1,0 +1,15 @@
+{
+  "_opis": "Tablice Deck zamiast boardów Notiona (K146-D5: Task List 2023 → Deck). Kolumny w kolejności, etykiety z kolorem hex bez #.",
+  "tablice": [
+    {
+      "tytul": "Zadania", "kolor": "0082c9",
+      "kolumny": ["To Do", "Doing", "In Review", "Blocked", "Done"],
+      "etykiety": {"Pilne": "e9322d", "Hermes": "0082c9", "Claude Code": "8e44ad", "Decyzja Filipa": "f1c40f", "Dom": "2ecc71"}
+    },
+    {
+      "tytul": "Projekty i epiki", "kolor": "8e44ad",
+      "kolumny": ["Pomysł", "Plan", "W toku", "Czeka na Filipa", "Zrobione"],
+      "etykiety": {"P0": "e9322d", "P1": "e67e22", "P2": "f1c40f", "P3": "95a5a6"}
+    }
+  ]
+}
