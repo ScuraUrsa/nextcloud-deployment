@@ -1,0 +1,281 @@
+{
+  "_opis": "Schematy baz Notiona do odtworzenia w Nextcloud Tables (K146). Kolumna: 'Nazwa:typ' albo 'Nazwa:typ=opcja|opcja'. Typy: title, t (linia), long (tekst długi), url, email, phone, n (liczba), d (data), dt (data i czas), cb (checkbox), s (wybór), ms (wielokrotny wybór), rel>Tabela (relacja). Wybór bez opcji: opcje dopisze importer z Notiona. Tylko struktura, bez danych.",
+  "_decyzje": {
+    "K146-D5": "Task List (2023) idzie do Deck jako tablica, nie do Tables (deck.json).",
+    "K146-D6": "Relacja w Tables wskazuje jeden wiersz; z relacji wielokrotnych Notiona importer przenosi pierwszą, a resztę wypisuje w raporcie importu. Inaczej: Teable (D1)."
+  },
+  "tabele": [
+    {
+      "tytul": "Cele",
+      "emoji": "🎯",
+      "opis": "Cele Filipa (timeplane). Schemat minimalny: uzupełnić przy migracji z Notiona.",
+      "kolumny": [
+        "Nazwa:title",
+        "Status:s=aktywny|osiągnięty|porzucony",
+        "Horyzont:s",
+        "Opis:long"
+      ]
+    },
+    {
+      "tytul": "Epiki",
+      "emoji": "🧱",
+      "opis": "Epiki timeplane. Schemat minimalny: uzupełnić przy migracji z Notiona.",
+      "kolumny": [
+        "Nazwa:title",
+        "Status:s",
+        "Cel:rel>Cele",
+        "Opis:long"
+      ]
+    },
+    {
+      "tytul": "Plan dnia",
+      "emoji": "📅",
+      "opis": "Rdzeń timeplane: wiersz to zadanie albo blok dnia. Zapisuje Hermes (tp), Filip zmienia Status. Kalendarz zajmuje się wykonaniem.",
+      "kolumny": [
+        "Name:title",
+        "Type:s=event|task|block|buffer",
+        "Start:dt",
+        "End:dt",
+        "Termin:d",
+        "Day:t",
+        "Minuty:n",
+        "Calendar:t",
+        "GcalId:t",
+        "NotionPage:url",
+        "Immutable:cb",
+        "Ostatnio przeglądane:d",
+        "Przesunięcia:n",
+        "Powtarzanie:t",
+        "Status:s=planned|active|done|dropped",
+        "Stan:s",
+        "Etap:s",
+        "Horyzont:s",
+        "Priority:s=p0|p1|p2|p3",
+        "Kwadrat:s=Q1|Q2|Q3|Q4",
+        "Pilne 🔥:cb",
+        "Wstępne ❔:cb",
+        "Oszacowane:cb",
+        "Głosowo 🔊:cb",
+        "Kategoria:s",
+        "Podkategoria:t",
+        "Kategorie życia:ms",
+        "Tagi:ms",
+        "Source:s=hermes|gcal|kanban|manual",
+        "Typ:s=zwykłe|zleć Hermesowi|zleć Claude Code|decyzja Filipa|przegląd wyniku",
+        "Nastroje:ms",
+        "SMART:long",
+        "S – rezultat:long",
+        "M – miara:long",
+        "A – pierwszy krok:long",
+        "R – po co:long",
+        "Prompt:long",
+        "Faza epiku:t",
+        "Cel:rel>Cele",
+        "Epik:rel>Epiki",
+        "Wydarzenie:rel>Plan dnia",
+        "Zależy od:rel>Plan dnia"
+      ]
+    },
+    {
+      "tytul": "Skrzynka",
+      "emoji": "📥",
+      "opis": "Wszystko, co wpada do przejrzenia. Hermes zapisuje, Filip przenosi dalej.",
+      "kolumny": [
+        "Name:title",
+        "Kind:s=pr|task|youtube|market|news|report|note",
+        "Status:s=new|triaged|done|archived",
+        "Priority:s=p0|p1|p2|p3",
+        "Captured:dt",
+        "Source:t",
+        "Note:long",
+        "Url:url",
+        "Nastroje:ms"
+      ]
+    },
+    {
+      "tytul": "Czytelnia",
+      "emoji": "📖",
+      "opis": "Do przeczytania. Filip zmienia Status i Comment, Hermes na to reaguje.",
+      "kolumny": [
+        "Name:title",
+        "Kind:s=pr|youtube|market|news|doc|task|other",
+        "Status:s=unread|read|done|returned_with_comment",
+        "Added:dt",
+        "Summary:long",
+        "Comment:long",
+        "ReportPage:url",
+        "Url:url"
+      ]
+    },
+    {
+      "tytul": "CRM Contacts",
+      "emoji": "👥",
+      "opis": "Kontakty z kontekstem relacji. Next Suggested Contact liczy Hermes. Dane osobowe: tabela tylko dla Filipa.",
+      "kolumny": [
+        "Name:title",
+        "Aliases:ms",
+        "Groups:ms",
+        "Relationship Type:s",
+        "Contact Frequency:s",
+        "Source:s=Phonebook|Facebook|Messenger|WhatsApp|Instagram|Manual",
+        "Status znajomości:s=Aktywna|Zamrożona|Przeszła",
+        "Email:email",
+        "Phone:phone",
+        "Social Profiles:long",
+        "External ID:t",
+        "Important Dates:long",
+        "Gift Ideas:long",
+        "Likes / Dislikes:long",
+        "Notes / Facts:long",
+        "Places Visited Together:long",
+        "Relationship Context:long",
+        "Last Contact:d",
+        "Next Suggested Contact:d"
+      ]
+    },
+    {
+      "tytul": "Lista zakupów i życzeń",
+      "emoji": "🛒",
+      "opis": "Zakupy, prezenty i życzenia. promo-watch szuka okazji dla wierszy z 'Szukaj okazji'.",
+      "kolumny": [
+        "Name:title",
+        "Typ:s=Zakup|Prezent|Życzenie|Usługa",
+        "Grupa:s=Nasze potrzeby|Dla innych (CRM)",
+        "Kategoria:s",
+        "Status:s=Do kupienia|Czekam na okazję|Zamówione|Kupione|Odrzucone",
+        "Priorytet:s=Pilne|Normalny|Kiedyś",
+        "Źródło:s",
+        "Kupione:cb",
+        "Szukaj okazji:cb",
+        "Ilość:t",
+        "Dla kogo:t",
+        "Gdzie / okolica:t",
+        "Okazja:t",
+        "Słowa kluczowe:t",
+        "Najlepsza oferta:t",
+        "Notatka:long",
+        "Id:t",
+        "Maks. cena (zł):n",
+        "Cena oferty (zł):n",
+        "Cyklicznie co (dni):n",
+        "Dodano:d",
+        "Ważne do:d",
+        "Oferta sprawdzona:d",
+        "Link:url",
+        "Osoba (CRM):rel>CRM Contacts"
+      ]
+    },
+    {
+      "tytul": "Baza wiedzy Hermesa",
+      "emoji": "📚",
+      "opis": "Wiedza, decyzje i instrukcje dla agentów (wspólna taksonomia 14 kategorii).",
+      "kolumny": [
+        "Tytuł:title",
+        "Kategoria:s",
+        "Typ:s",
+        "Źródło:s",
+        "Forma:s=Podsumowanie|Kopia",
+        "Przegląd:s=Nowe|Sprawdzone ✓|Do poprawy",
+        "Profil:s",
+        "Projekt:s",
+        "Tagi:ms",
+        "Data:d",
+        "Wartość:n",
+        "ID źródła:t",
+        "Powiązane:rel>Baza wiedzy Hermesa"
+      ]
+    },
+    {
+      "tytul": "Tematy rozmów",
+      "emoji": "🧩",
+      "opis": "Tematy archiwum rozmów ChatGPT.",
+      "kolumny": [
+        "Temat:title",
+        "Kategoria:s",
+        "Opis:long",
+        "Slug:t",
+        "Wcześniej opracowane:long"
+      ]
+    },
+    {
+      "tytul": "Rozmowy ChatGPT",
+      "emoji": "💬",
+      "opis": "Archiwum opracowanych rozmów ChatGPT (K143).",
+      "kolumny": [
+        "Tytuł:title",
+        "Data:d",
+        "ID rozmowy:t",
+        "Konto:s",
+        "Kategoria:s",
+        "Kategoria (Baza wiedzy):s",
+        "Typ:s",
+        "Wartość:s=Wysoka|Średnia|Niska",
+        "Status:s=Do działania|Wiedza referencyjna|Nieaktualne|Jednorazowe",
+        "Tagi:ms",
+        "Streszczenie:long",
+        "Wcześniej opracowane:long",
+        "Wiadomości:n",
+        "Temat:rel>Tematy rozmów",
+        "Powiązane rozmowy:rel>Rozmowy ChatGPT"
+      ]
+    },
+    {
+      "tytul": "Szablony randek",
+      "emoji": "💡",
+      "opis": "Pomysły na randki do powtarzania. Schemat minimalny: uzupełnić przy migracji z Notiona.",
+      "kolumny": [
+        "Nazwa:title",
+        "Rodzaj:ms",
+        "Opis:long"
+      ]
+    },
+    {
+      "tytul": "Randki",
+      "emoji": "💑",
+      "opis": "Plan i historia randek. Tabela tylko dla Filipa.",
+      "kolumny": [
+        "Nazwa:title",
+        "Data:dt",
+        "Status:s=pomysł|propozycja|zaplanowana|odbyła się|odwołana",
+        "Rodzaj:ms",
+        "Opieka:s",
+        "Ocena:n",
+        "Wrócić?:s=tak|nie|może",
+        "Koszt (zł):n",
+        "Miejsca:long",
+        "Notatka:long",
+        "Link:url",
+        "Raport:url",
+        "Źródło:s",
+        "Szablon:rel>Szablony randek"
+      ]
+    },
+    {
+      "tytul": "Rejestr porządków",
+      "emoji": "🗂️",
+      "opis": "Rejestr porządków (K142): każda strona i baza z decyzją Filipa. Usuwa tylko Filip.",
+      "kolumny": [
+        "Source Title:title",
+        "Source URL:url",
+        "Source ID:t",
+        "Ścieżka:t",
+        "Typ obiektu:s=strona|baza",
+        "Ostatnia edycja:d",
+        "Klasa:s",
+        "Stan:s=do przeglądu|opracowane|duplikat|śmieć|zostaje (system)|pusta",
+        "Kategoria wiedzy:s",
+        "Podsumowanie:long",
+        "Rekomendacja:long",
+        "Powód:long",
+        "Polecenie dla Hermesa:long",
+        "Zostaje wersja:url",
+        "New Page URL:url",
+        "Wynik:url",
+        "Można usunąć ✓:cb",
+        "Wrażliwe:cb",
+        "Decyzja Filipa:s=usuń|opracuj|zostaw",
+        "Wykonanie:s=czeka|w toku|zrobione|błąd"
+      ]
+    }
+  ]
+}

@@ -45,12 +45,12 @@ jobs:
         # Test requirements give mypy the pytest/requests type information.
         run: pip install ruff==0.17.0 mypy==2.4.0 bandit==1.9.4 -r tests/requirements-test.txt
       - name: Run ruff
-        run: ruff check tests/
+        run: ruff check tests/ kits/
       - name: Run mypy
         # Strictness is configured per module in mypy.ini.
-        run: mypy tests/
+        run: mypy tests/ kits/
       - name: Run bandit
-        run: bandit -r tests/ -c bandit.yaml
+        run: bandit -r tests/ kits/ -c bandit.yaml
 
   unit-tests:
     runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
