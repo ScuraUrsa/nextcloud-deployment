@@ -24,6 +24,7 @@ jobs:
         run: sudo apt-get install -y pandoc
       - name: Convert report to HTML
         run: |
+          mkdir -p _site
           pandoc NEXTCLOUD_DEPLOYMENT_REPORT.md \
             --from markdown --to html5 \
             --standalone --toc --toc-depth=3 \
