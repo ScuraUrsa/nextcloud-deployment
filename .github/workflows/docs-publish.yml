@@ -36,7 +36,7 @@ jobs:
             pandoc "$f" --from markdown --to html5 --standalone -o "_site/docs/$name.html"
           done
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v6
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
