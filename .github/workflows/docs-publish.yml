@@ -19,11 +19,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install pandoc
         run: sudo apt-get install -y pandoc
       - name: Convert report to HTML
         run: |
+          mkdir -p _site
           pandoc NEXTCLOUD_DEPLOYMENT_REPORT.md \
             --from markdown --to html5 \
             --standalone --toc --toc-depth=3 \
@@ -35,11 +36,11 @@ jobs:
             pandoc "$f" --from markdown --to html5 --standalone -o "_site/docs/$name.html"
           done
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v6
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: '_site'
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
