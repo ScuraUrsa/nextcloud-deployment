@@ -93,7 +93,7 @@ jobs:
     runs-on: ${{ vars.CI_RUNS_ON || 'hermes' }}
     steps:
       - name: Create alert issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const failedJobs = [];
