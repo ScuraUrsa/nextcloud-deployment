@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.15'
       - name: Install linting tools
         run: pip install ansible-core==2.21.5 ansible-lint==26.9.0 yamllint==1.38.0
       - name: Install collections
@@ -40,7 +40,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.15'
       - name: Install dependencies
         # Test requirements give mypy the pytest/requests type information.
         run: pip install ruff==0.17.0 mypy==2.4.0 bandit==1.9.4 -r tests/requirements-test.txt
@@ -84,7 +84,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.15'
       - name: Install Ansible
         run: pip install ansible ansible-lint
       - name: Install collections
