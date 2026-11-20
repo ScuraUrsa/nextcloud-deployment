@@ -74,7 +74,7 @@ jobs:
           borg extract --stdout ssh://borg@${{ steps.preflight.outputs.host }}/./nextcloud::$LATEST tmp/keycloak-realm-export.json | jq -r '.id'
       - name: Create issue on failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.create({
