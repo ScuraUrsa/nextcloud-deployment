@@ -83,10 +83,12 @@ class FakeNextcloud:
             return FakeResponse(200, c)
         if path == "/ocs/v2.php/apps/collectives/api/v1.0/collectives":
             if method == "GET":
-                return ocs(list(self.collectives.values()))
+                # Collectives 4.x opakowuje listę (jak na stage, NC 35 + Collectives 4.8).
+                return ocs({"collectives": list(self.collectives.values())})
             c = {"id": self._id(), "name": body["name"]}
             self.collectives[c["id"]] = c
-            self.templates[c["id"]] = [{"id": self._id(), "title": "Template", "parentId": 0}]
+            # Strona główna szablonów (.templates/Readme.md) nie jest zwracana w liście.
+            self.templates[c["id"]] = []
             return ocs({"collective": c})
         m = re.fullmatch(r"/ocs/v2.php/apps/collectives/api/v1.0/collectives/(\d+)/pages/templates(?:/(\d+))?", path)
         if m:
@@ -199,7 +201,8 @@ def test_apply_builds_everything_once(fake: FakeNextcloud, nc: Nextcloud) -> Non
     first_rel = next(i for i, b in enumerate(posts) if b["type"] == "relation")
     assert all(b["type"] == "relation" for b in posts[first_rel:])
     assert len(fake.collectives) == len(kit.COLLECTIVES)
-    assert all(len(t) == 1 + len(kit.page_templates()) for t in fake.templates.values())
+    assert all(len(t) == len(kit.page_templates()) for t in fake.templates.values())
+    assert all(p["parentId"] == 0 for t in fake.templates.values() for p in t)
     assert any(k.endswith("/Templates/Snippety.md") for k in fake.files)
     assert any(k.endswith("/.templates/Decyzja.md") for k in fake.files)
     assert [b["title"] for b in fake.boards] == [b["tytul"] for b in kit.load_boards()]

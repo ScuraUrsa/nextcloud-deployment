@@ -291,7 +291,11 @@ class Kit:
         templates = page_templates()
         existing: dict[str, int] = {}
         if self.nc:
-            for c in self.nc.request("GET", "/ocs/v2.php/apps/collectives/api/v1.0/collectives") or []:
+            listed = self.nc.request("GET", "/ocs/v2.php/apps/collectives/api/v1.0/collectives") or []
+            # Collectives 4.x opakowuje listę: {"collectives": [...]}.
+            if isinstance(listed, dict):
+                listed = listed.get("collectives", [])
+            for c in listed:
                 existing[c["name"]] = c["id"]
         for name, emoji in COLLECTIVES.items():
             cid = existing.get(name)
@@ -315,11 +319,11 @@ class Kit:
                 if not self.do(Step("szablon strony", f"{name} / {title}")):
                     continue
                 assert self.nc and cid is not None
-                if root is None:
-                    self.warnings.append(f"{name}: brak strony głównej szablonów; szablony do dodania ręcznie")
-                    break
-                base = f"/ocs/v2.php/apps/collectives/api/v1.0/collectives/{cid}/pages/templates/{root['id']}"
-                made = self.nc.request("POST", base, json={"title": title, "parentId": root["id"]})
+                # Collectives nie zwraca strony głównej szablonów (.templates/Readme.md) w liście;
+                # parentId 0 każe mu ją znaleźć (albo założyć) samemu.
+                parent = root["id"] if root else 0
+                base = f"/ocs/v2.php/apps/collectives/api/v1.0/collectives/{cid}/pages/templates/{parent}"
+                made = self.nc.request("POST", base, json={"title": title, "parentId": parent})
                 page = made.get("template") or made.get("page") or made
                 self.nc.request("PUT", self.nc.dav_path(page["collectivePath"], page["filePath"], page["fileName"]),
                                 data=content.encode("utf-8"), headers={"Content-Type": "text/markdown"})
